@@ -62,7 +62,7 @@ private func runLaunchctl(_ args: [String]) -> Int32 {
     let proc = Process()
     proc.executableURL = URL(fileURLWithPath: "/bin/launchctl")
     proc.arguments = args
-    try? proc.run()
+    do { try proc.run() } catch { return -1 }
     proc.waitUntilExit()
     return proc.terminationStatus
 }
