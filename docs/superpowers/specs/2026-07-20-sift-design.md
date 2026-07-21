@@ -23,8 +23,9 @@ dependencies** (Foundation + Darwin only) and driven by a JSON config file.
   `… to Delete` folder, again sorted by category.
 - The `… to Delete` stage is a **holding pen** — Sift never actually deletes.
   The user empties it manually.
-- Every file Sift manages carries a Finder **tag showing days until its next
-  move**, refreshed on each run so it ticks down on its own.
+- Once Sift has moved a file (Review stage onward), it carries a Finder **tag
+  showing days until its next move**, refreshed on each run so it ticks down on
+  its own. Files still sitting in the live folders are left untagged.
 - All behavior is data-driven from a JSON config; the binary is a generic
   folders → rules → conditions + actions engine.
 
@@ -86,11 +87,13 @@ not flattened — structure is re-derived from each file, so it matches Review).
 
 ## 5. Tagging
 
-Sift owns a `Sift` tag namespace and refreshes tags every run.
+Sift owns a `Sift` tag namespace and refreshes tags every run. Tagging begins
+only once Sift has moved a file — files still in the live folders are untagged,
+so every Sift tag signals a file already on its way toward deletion.
 
 | File location | Tag text | Finder color |
 |---|---|---|
-| Live folder (Desktop/Downloads), waiting | `Sift · Nd → Review` | yellow (5) |
+| Live folder (Desktop/Downloads), waiting | *(untagged)* | — |
 | `… to Review`, waiting | `Sift · Nd → Delete` | orange (7) |
 | `… to Delete` (terminal) | `Sift · Delete` | red (6) |
 
@@ -115,9 +118,9 @@ else                  -> tag = "<prefix> · <remainingDays>d → <NextStep>"
 ### 5.2 Refresh semantics
 
 Because tags must stay current, each run Sift updates the countdown tag on **every**
-managed file in a watched folder — not only the ones moving. When a move lands a
-file in a non-watched (terminal) destination, Sift writes the static terminal tag
-instead of a countdown.
+file in a watched `… to Review` folder — not only the ones moving. When a move
+lands a file in a non-watched (terminal) `… to Delete` destination, Sift writes
+the static terminal tag instead of a countdown. Live folders are never tagged.
 
 ### 5.3 Color mechanism
 
@@ -125,7 +128,7 @@ Tag **names** are written via `URLResourceValues.tagNames`. To force a specific
 color, Sift writes the Finder user-tags xattr directly (the `com.apple.metadata`
 domain key `kMDItemUserTags`, underscore-prefixed) as a property-list array of
 `"name\n<colorIndex>"` strings (via `PropertyListSerialization`). Finder color
-indices: 5 = yellow, 6 = red, 7 = orange.
+indices used: 7 = orange (Review countdown), 6 = red (terminal Delete).
 
 ## 6. Move Semantics
 
