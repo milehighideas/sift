@@ -17,6 +17,11 @@ final class RulesTests: XCTestCase {
         XCTAssertEqual(remainingDays(dateAdded: now.addingTimeInterval(-8 * 86400), threshold: week, now: now), 0)
     }
 
+    func testRemainingDaysClampsFutureDateAdded() {
+        // Restamp round-trip can leave dateAdded a hair above now; elapsed must clamp to 0.
+        XCTAssertEqual(remainingDays(dateAdded: now.addingTimeInterval(0.5), threshold: week, now: now), 7)
+    }
+
     func testRuleMatchesAll() throws {
         let rule = Rule(name: "r", match: "all",
             conditions: [Condition(attr: "date_added", op: "older_than", value: "7d")],
