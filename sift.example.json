@@ -1,0 +1,61 @@
+{
+  "settings": {
+    "interval": "1h",
+    "log": "~/Library/Logs/sift.log",
+    "dryRun": false,
+    "categories": {
+      "images":     ["jpg","jpeg","png","gif","heic","heif","webp","tiff","tif","bmp","svg","raw","cr2","cr3","nef","arw","dng"],
+      "documents":  ["pdf","doc","docx","txt","rtf","md","pages","odt","csv","xls","xlsx","ppt","pptx","key","numbers","epub"],
+      "archives":   ["zip","tar","gz","tgz","bz2","xz","rar","7z"],
+      "installers": ["dmg","pkg","mpkg","app"],
+      "audio":      ["mp3","m4a","aac","wav","flac","aiff","ogg"],
+      "video":      ["mp4","mov","m4v","avi","mkv","webm","wmv"],
+      "code":       ["js","ts","jsx","tsx","go","py","rb","rs","java","c","h","cpp","sh","json","yaml","yml","html","css","sql"]
+    },
+    "tagging": { "enabled": true, "prefix": "Sift" }
+  },
+  "folders": [
+    {
+      "path": "~/Desktop",
+      "recurse": false,
+      "filesOnly": true,
+      "ignore": ["Desktop to Review", "Desktop to Delete"],
+      "rules": [
+        { "name": "Age stale Desktop files into Review", "match": "all",
+          "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+          "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] }
+      ]
+    },
+    {
+      "path": "~/Desktop/Desktop to Review",
+      "recurse": true,
+      "filesOnly": true,
+      "rules": [
+        { "name": "Age stale Review files into Delete", "match": "all",
+          "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+          "actions": [ { "move": { "to": "~/Desktop/Desktop to Delete", "sortInto": "category", "onConflict": "rename" } } ] }
+      ]
+    },
+    {
+      "path": "~/Downloads",
+      "recurse": false,
+      "filesOnly": true,
+      "ignore": ["Downloads to Review", "Downloads to Delete"],
+      "rules": [
+        { "name": "Age stale Downloads into Review", "match": "all",
+          "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+          "actions": [ { "move": { "to": "~/Downloads/Downloads to Review", "sortInto": "category", "onConflict": "rename" } } ] }
+      ]
+    },
+    {
+      "path": "~/Downloads/Downloads to Review",
+      "recurse": true,
+      "filesOnly": true,
+      "rules": [
+        { "name": "Age stale Review files into Delete", "match": "all",
+          "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+          "actions": [ { "move": { "to": "~/Downloads/Downloads to Delete", "sortInto": "category", "onConflict": "rename" } } ] }
+      ]
+    }
+  ]
+}
