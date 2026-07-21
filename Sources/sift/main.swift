@@ -1,4 +1,5 @@
 import SiftCore
+import Foundation
 
-// Replaced with real dispatch in Task 10.
-print("sift")
+let argv = Array(CommandLine.arguments.dropFirst())
+exit(runCLI(argv))
