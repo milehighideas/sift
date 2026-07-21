@@ -44,4 +44,25 @@ final class ActionsTests: XCTestCase {
         XCTAssertNil(try performMove(src: src, toDir: dstDir, onConflict: "skip"))
         XCTAssertTrue(FileManager.default.fileExists(atPath: src.path))
     }
+
+    func testReplaceOnConflict() throws {
+        let dstDir = root.appendingPathComponent("Review")
+        let existing = try makeFile("a.png", in: dstDir)
+        try "old".write(to: existing, atomically: true, encoding: .utf8)
+        let srcDir = root.appendingPathComponent("Incoming")
+        let src = try makeFile("a.png", in: srcDir)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        let out = try XCTUnwrap(try performMove(src: src, toDir: dstDir, onConflict: "replace"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: out.path))
+        let contents = try String(contentsOf: out, encoding: .utf8)
+        XCTAssertEqual(contents, "new")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: src.path))
+    }
+
+    func testUniqueDestinationExtensionless() throws {
+        let dir = root.appendingPathComponent("Extensionless")
+        let existing = try makeFile("README", in: dir)
+        let candidate = uniqueDestination(existing)
+        XCTAssertEqual(candidate.lastPathComponent, "README 2")
+    }
 }

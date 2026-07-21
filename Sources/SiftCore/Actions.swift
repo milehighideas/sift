@@ -26,7 +26,7 @@ public func performMove(src: URL, toDir: URL, onConflict: String) throws -> URL?
     if fm.fileExists(atPath: dst.path) {
         switch onConflict {
         case "skip": return nil
-        case "replace": try? fm.removeItem(at: dst)
+        case "replace": try fm.removeItem(at: dst)
         default: dst = uniqueDestination(dst)
         }
     }
