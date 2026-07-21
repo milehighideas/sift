@@ -49,11 +49,15 @@ public struct Scanner {
             guard let moved = try performMove(src: file, toDir: toDir, onConflict: move.onConflict) else {
                 log("SKIP conflict \(file.path)"); return
             }
-            try? setDateAdded(moved.path, to: now)
+            do { try setDateAdded(moved.path, to: now) } catch { log("ERROR stamp \(moved.path): \(error)") }
             if terminalDest && config.settings.tagging.enabled {
                 let word = lastWord(dest)
-                try? setSiftTag(moved.path, text: "\(config.settings.tagging.prefix) · \(word)",
-                                color: 6, prefix: config.settings.tagging.prefix)
+                do {
+                    try setSiftTag(moved.path, text: "\(config.settings.tagging.prefix) · \(word)",
+                                    color: 6, prefix: config.settings.tagging.prefix)
+                } catch {
+                    log("ERROR tag \(moved.path): \(error)")
+                }
             }
             log("MOVE \(file.path) -> \(moved.path)")
         } catch {
@@ -68,7 +72,12 @@ public struct Scanner {
         guard n > 0 else { return }
         let text = "\(config.settings.tagging.prefix) · \(n)d → \(lastWord(dest))"
         if dryRun { log("DRY tag \(file.path): \(text)"); return }
-        try? setSiftTag(file.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
+        do {
+            try setSiftTag(file.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
+            log("TAG \(file.path): \(text)")
+        } catch {
+            log("ERROR tag \(file.path): \(error)")
+        }
     }
 
     private func enumerateFiles(_ folder: FolderConfig) -> [URL] {
@@ -77,7 +86,10 @@ public struct Scanner {
         let ignore = Set(folder.ignore ?? [])
         guard let items = try? fm.contentsOfDirectory(
             at: base, includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else { return [] }
+            options: [.skipsHiddenFiles]) else {
+            log("SKIP unreadable folder \(folder.path)")
+            return []
+        }
         var result: [URL] = []
         for item in items {
             if ignore.contains(item.lastPathComponent) { continue }
@@ -113,6 +125,6 @@ public struct Scanner {
 
     private func lastWord(_ path: String) -> String {
         let name = (path as NSString).lastPathComponent
-        return name.split(separator: " ").last.map(String.init) ?? name
+        return (name.split(separator: " ").last.map(String.init) ?? name).capitalized
     }
 }
