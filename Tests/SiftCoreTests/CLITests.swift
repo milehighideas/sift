@@ -4,7 +4,7 @@ import XCTest
 final class CLITests: XCTestCase {
     func testParsesDefaults() {
         let a = parseArgs([])
-        XCTAssertEqual(a.command, "run")
+        XCTAssertEqual(a.command, "")
         XCTAssertFalse(a.dryRun)
         XCTAssertTrue(a.configPath.hasSuffix("/.config/sift/sift.json"))
     }
@@ -16,5 +16,14 @@ final class CLITests: XCTestCase {
 
     func testUnknownConfigReturnsNonZero() {
         XCTAssertNotEqual(runCLI(["run", "--config", "/no/such.json"]), 0)
+    }
+
+    func testBareCommandDoesNotRun() {
+        XCTAssertEqual(runCLI([]), 2)
+        XCTAssertEqual(runCLI(["bogus"]), 2)
+    }
+
+    func testHelpReturnsZero() {
+        XCTAssertEqual(runCLI(["--help"]), 0)
     }
 }

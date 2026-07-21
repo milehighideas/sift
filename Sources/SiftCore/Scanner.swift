@@ -17,37 +17,43 @@ public struct Scanner {
 
     public func run() {
         let watched = Set(config.folders.map { standardized($0.path) })
+        var movedThisRun = Set<String>()
         for folder in config.folders {
             guard let rule = folder.rules.first, let move = rule.actions.first?.move else { continue }
             let dest = standardized(move.to)
             let terminalDest = !watched.contains(dest)
             for file in enumerateFiles(folder) {
-                process(file: file, folder: folder, rule: rule, move: move,
-                        dest: dest, terminalDest: terminalDest)
+                let moved = process(file: file, folder: folder, rule: rule, move: move,
+                        dest: dest, terminalDest: terminalDest,
+                        skipMove: movedThisRun.contains(file.path))
+                if let moved = moved { movedThisRun.insert(moved) }
             }
         }
     }
 
     private func process(file: URL, folder: FolderConfig, rule: Rule, move: MoveAction,
-                         dest: String, terminalDest: Bool) {
-        guard let added = dateAdded(of: file.path) else { return }
+                         dest: String, terminalDest: Bool, skipMove: Bool) -> String? {
+        guard let added = dateAdded(of: file.path) else { return nil }
         let matched = (try? ruleMatches(rule, dateAdded: added, now: now)) ?? false
         if matched {
-            moveFile(file, move: move, dest: dest, terminalDest: terminalDest)
+            if skipMove { log("SKIP double-hop guard \(file.path)"); return nil }
+            return moveFile(file, move: move, dest: dest, terminalDest: terminalDest)
         } else if terminalDest && config.settings.tagging.enabled {
             tagCountdown(file, rule: rule, added: added, dest: dest)
         }
+        return nil
     }
 
-    private func moveFile(_ file: URL, move: MoveAction, dest: String, terminalDest: Bool) {
+    @discardableResult
+    private func moveFile(_ file: URL, move: MoveAction, dest: String, terminalDest: Bool) -> String? {
         let category = move.sortInto == "category" ? resolver.category(for: file.lastPathComponent) : ""
         let toDir = category.isEmpty
             ? URL(fileURLWithPath: dest)
             : URL(fileURLWithPath: dest).appendingPathComponent(category)
-        if dryRun { log("DRY move \(file.path) -> \(toDir.path)"); return }
+        if dryRun { log("DRY move \(file.path) -> \(toDir.path)"); return nil }
         do {
             guard let moved = try performMove(src: file, toDir: toDir, onConflict: move.onConflict) else {
-                log("SKIP conflict \(file.path)"); return
+                log("SKIP conflict \(file.path)"); return nil
             }
             do { try setDateAdded(moved.path, to: now) } catch { log("ERROR stamp \(moved.path): \(error)") }
             if terminalDest && config.settings.tagging.enabled {
@@ -60,8 +66,10 @@ public struct Scanner {
                 }
             }
             log("MOVE \(file.path) -> \(moved.path)")
+            return moved.path
         } catch {
             log("ERROR move \(file.path): \(error)")
+            return nil
         }
     }
 

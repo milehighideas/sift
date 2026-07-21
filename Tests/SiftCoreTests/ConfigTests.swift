@@ -42,6 +42,18 @@ final class ConfigTests: XCTestCase {
         XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
     }
 
+    func testRejectsMultipleRules() throws {
+        let secondRule = """
+        , { "name": "r2", "match": "all",
+            "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+            "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] }
+        """
+        let bad = valid.replacingOccurrences(
+            of: "\"onConflict\": \"rename\" } } ] } ] }",
+            with: "\"onConflict\": \"rename\" } } ] } \(secondRule) ] }")
+        XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
+    }
+
     func testUnreadablePath() {
         XCTAssertThrowsError(try loadConfig(at: "/no/such/sift.json")) {
             XCTAssertEqual($0 as? ConfigError, .unreadable("/no/such/sift.json"))

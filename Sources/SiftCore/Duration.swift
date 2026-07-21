@@ -11,7 +11,8 @@ public func parseDuration(_ s: String) throws -> TimeInterval {
     let trimmed = s.trimmingCharacters(in: .whitespaces)
     guard let unit = trimmed.last else { throw DurationError.empty }
     let numberPart = String(trimmed.dropLast())
-    guard let value = Double(numberPart) else { throw DurationError.badFormat(s) }
+    guard let value = Double(numberPart) else { throw DurationError.badFormat(trimmed) }
+    guard value.isFinite, value >= 0 else { throw DurationError.badFormat(trimmed) }
     switch unit {
     case "s": return value
     case "m": return value * 60

@@ -65,4 +65,23 @@ final class ScannerTests: XCTestCase {
         Scanner(config: config(), now: Date(), dryRun: true, log: { _ in }).run()
         XCTAssertTrue(FileManager.default.fileExists(atPath: path))
     }
+
+    func testSecondRunIsIdempotent() throws {
+        _ = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        let review = home.appendingPathComponent("Desktop/Desktop to Review/Images/old.png").path
+        let delete = home.appendingPathComponent("Desktop/Desktop to Delete/Images/old.png").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: review))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: delete))
+    }
+
+    func testReviewFileAgesToDeleteWithTerminalTag() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 10)
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+        let moved = home.appendingPathComponent("Desktop/Desktop to Delete/Images/old.png").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved))
+        XCTAssertTrue(rawTags(of: moved).contains { $0.hasPrefix("Sift · Delete") })
+    }
 }

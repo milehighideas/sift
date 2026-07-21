@@ -2,37 +2,27 @@ import Foundation
 
 public let launchdLabel = "com.brandonshutter.sift"
 
+public enum LaunchdError: Error { case loadFailed(Int32) }
+
 public func launchdPlistPath() -> String {
     expandTilde("~/Library/LaunchAgents/\(launchdLabel).plist")
 }
 
 public func makeLaunchdPlist(binaryPath: String, configPath: String,
                              interval: TimeInterval, logPath: String) -> String {
-    """
-    <?xml version="1.0" encoding="UTF-8"?>
-    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-    <plist version="1.0">
-    <dict>
-        <key>Label</key>
-        <string>\(launchdLabel)</string>
-        <key>ProgramArguments</key>
-        <array>
-            <string>\(binaryPath)</string>
-            <string>run</string>
-            <string>--config</string>
-            <string>\(configPath)</string>
-        </array>
-        <key>StartInterval</key>
-        <integer>\(Int(interval))</integer>
-        <key>RunAtLoad</key>
-        <true/>
-        <key>StandardOutPath</key>
-        <string>\(logPath)</string>
-        <key>StandardErrorPath</key>
-        <string>\(logPath)</string>
-    </dict>
-    </plist>
-    """
+    let dict: [String: Any] = [
+        "Label": launchdLabel,
+        "ProgramArguments": [binaryPath, "run", "--config", configPath],
+        "StartInterval": Int(interval),
+        "RunAtLoad": true,
+        "StandardOutPath": logPath,
+        "StandardErrorPath": logPath,
+    ]
+    guard let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0),
+          let xml = String(data: data, encoding: .utf8) else {
+        return ""
+    }
+    return xml
 }
 
 public func installAgent(binaryPath: String, configPath: String, config: Config) throws {
@@ -48,7 +38,8 @@ public func installAgent(binaryPath: String, configPath: String, config: Config)
         withIntermediateDirectories: true)
     try plist.write(toFile: path, atomically: true, encoding: .utf8)
     _ = runLaunchctl(["unload", path])
-    _ = runLaunchctl(["load", path])
+    let rc = runLaunchctl(["load", path])
+    if rc != 0 { throw LaunchdError.loadFailed(rc) }
 }
 
 public func uninstallAgent() throws {
