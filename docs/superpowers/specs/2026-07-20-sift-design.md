@@ -54,15 +54,21 @@ Per live folder (`Desktop`, `Downloads`), files flow through three locations:
 
 Downloads is identical with `Downloads to Review` / `Downloads to Delete`.
 
-### 4.2 Category grouping
+### 4.2 Items and category grouping
 
-A file's category is the first category whose extension list (case-insensitive)
-contains the file's extension; unmatched files go to `Other`. Category folder
-names are **capitalized on disk** (`Images/`, `Documents/`, `Other/`) even though
-config keys are lowercase.
+Sift ages **whole top-level items** — files, folders, and macOS bundles (`.rtfd`,
+`.app`, saved-webpage `_files` folders, …). It **never descends into a directory
+or bundle it did not create**, so nested structure is moved intact, never
+flattened or shredded.
 
-Category grouping is applied in **both** the Review and Delete stages (Delete is
-not flattened — structure is re-derived from each file, so it matches Review).
+An item's category is the first category whose extension list (case-insensitive)
+contains the item's extension. Items with no recognized extension go to `Other`
+if they are files, or `Folders` if they are directories. A directory whose
+extension *is* recognized (a bundle like `.rtfd` → Documents, `.app` →
+Installers) categorizes by extension like any file. Category folder names are
+**capitalized on disk** (`Images/`, `Documents/`, `Folders/`, `Other/`).
+
+Category grouping is applied in **both** the Review and Delete stages.
 
 ### 4.3 The clock: macOS Date Added
 
@@ -75,15 +81,19 @@ not flattened — structure is re-derived from each file, so it matches Review).
 - Sift is therefore **stateless**: the filesystem's Date Added (which Sift
   controls) is the only state. No database.
 
-### 4.4 Loop safety
+### 4.4 Enumeration and loop safety
 
-- Top-level watches (`Desktop`, `Downloads`) are **non-recursive** and list the
-  Review/Delete folders in `ignore`, so a just-moved file is never re-swept in
-  the same pass.
-- `… to Review` watches are recursive but only carry the `→ Delete` rule.
+- Live folders (`Desktop`, `Downloads`) enumerate **top-level items only** and
+  list the Review/Delete folders in `ignore`, so a just-moved item is never
+  re-swept in the same pass.
+- A `… to Review` folder is detected as a **Review stage** because it is itself
+  the move destination of another folder. There, Sift's own category subfolders
+  (`Images/`, `Folders/`, …) are **transparent**: it descends exactly one level
+  into them to age the whole items inside, and no further. A user folder or
+  bundle sitting inside a category folder is aged as a single unit.
 - `… to Delete` folders are not watched at all.
-- `filesOnly: true` means directories (including the category subfolders) are
-  never treated as candidates.
+- Sift never descends into a directory it did not create (any non-category
+  folder, or any bundle), guaranteeing whole-item moves.
 
 ## 5. Tagging
 

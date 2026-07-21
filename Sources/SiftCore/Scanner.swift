@@ -17,43 +17,63 @@ public struct Scanner {
 
     public func run() {
         let watched = Set(config.folders.map { standardized($0.path) })
+        // A folder is a Review stage if it is itself the move destination of some
+        // other folder (i.e. Sift populated it with category subfolders). Those
+        // are the only folders we descend into one level; everything else is
+        // treated as a set of whole top-level items.
+        let destinations = allDestinations()
         var movedThisRun = Set<String>()
         for folder in config.folders {
             guard let rule = folder.rules.first, let move = rule.actions.first?.move else { continue }
             let dest = standardized(move.to)
             let terminalDest = !watched.contains(dest)
-            for file in enumerateFiles(folder) {
-                let moved = process(file: file, folder: folder, rule: rule, move: move,
-                        dest: dest, terminalDest: terminalDest,
-                        skipMove: movedThisRun.contains(file.path))
+            let reviewStage = destinations.contains(standardized(folder.path))
+            for item in enumerateItems(folder, reviewStage: reviewStage) {
+                let moved = process(item: item, rule: rule, move: move,
+                                    dest: dest, terminalDest: terminalDest,
+                                    skipMove: movedThisRun.contains(item.path))
                 if let moved = moved { movedThisRun.insert(moved) }
             }
         }
     }
 
-    private func process(file: URL, folder: FolderConfig, rule: Rule, move: MoveAction,
+    private func allDestinations() -> Set<String> {
+        var dests = Set<String>()
+        for folder in config.folders {
+            for rule in folder.rules {
+                for action in rule.actions {
+                    dests.insert(standardized(action.move.to))
+                }
+            }
+        }
+        return dests
+    }
+
+    private func process(item: URL, rule: Rule, move: MoveAction,
                          dest: String, terminalDest: Bool, skipMove: Bool) -> String? {
-        guard let added = dateAdded(of: file.path) else { return nil }
+        guard let added = dateAdded(of: item.path) else { return nil }
         let matched = (try? ruleMatches(rule, dateAdded: added, now: now)) ?? false
         if matched {
-            if skipMove { log("SKIP double-hop guard \(file.path)"); return nil }
-            return moveFile(file, move: move, dest: dest, terminalDest: terminalDest)
+            if skipMove { log("SKIP double-hop guard \(item.path)"); return nil }
+            return moveItem(item, move: move, dest: dest, terminalDest: terminalDest)
         } else if terminalDest && config.settings.tagging.enabled {
-            tagCountdown(file, rule: rule, added: added, dest: dest)
+            tagCountdown(item, rule: rule, added: added, dest: dest)
         }
         return nil
     }
 
     @discardableResult
-    private func moveFile(_ file: URL, move: MoveAction, dest: String, terminalDest: Bool) -> String? {
-        let category = move.sortInto == "category" ? resolver.category(for: file.lastPathComponent) : ""
+    private func moveItem(_ item: URL, move: MoveAction, dest: String, terminalDest: Bool) -> String? {
+        let category = move.sortInto == "category"
+            ? resolver.category(for: item.lastPathComponent, isDirectory: isDirectory(item))
+            : ""
         let toDir = category.isEmpty
             ? URL(fileURLWithPath: dest)
             : URL(fileURLWithPath: dest).appendingPathComponent(category)
-        if dryRun { log("DRY move \(file.path) -> \(toDir.path)"); return nil }
+        if dryRun { log("DRY move \(item.path) -> \(toDir.path)"); return nil }
         do {
-            guard let moved = try performMove(src: file, toDir: toDir, onConflict: move.onConflict) else {
-                log("SKIP conflict \(file.path)"); return nil
+            guard let moved = try performMove(src: item, toDir: toDir, onConflict: move.onConflict) else {
+                log("SKIP conflict \(item.path)"); return nil
             }
             do { try setDateAdded(moved.path, to: now) } catch { log("ERROR stamp \(moved.path): \(error)") }
             if terminalDest && config.settings.tagging.enabled {
@@ -65,66 +85,67 @@ public struct Scanner {
                     log("ERROR tag \(moved.path): \(error)")
                 }
             }
-            log("MOVE \(file.path) -> \(moved.path)")
+            log("MOVE \(item.path) -> \(moved.path)")
             return moved.path
         } catch {
-            log("ERROR move \(file.path): \(error)")
+            log("ERROR move \(item.path): \(error)")
             return nil
         }
     }
 
-    private func tagCountdown(_ file: URL, rule: Rule, added: Date, dest: String) {
+    private func tagCountdown(_ item: URL, rule: Rule, added: Date, dest: String) {
         guard let value = rule.conditions.first?.value,
               let threshold = try? parseDuration(value) else { return }
         let n = remainingDays(dateAdded: added, threshold: threshold, now: now)
         guard n > 0 else { return }
         let text = "\(config.settings.tagging.prefix) · \(n)d → \(lastWord(dest))"
-        if dryRun { log("DRY tag \(file.path): \(text)"); return }
+        if dryRun { log("DRY tag \(item.path): \(text)"); return }
         do {
-            try setSiftTag(file.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
-            log("TAG \(file.path): \(text)")
+            try setSiftTag(item.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
+            log("TAG \(item.path): \(text)")
         } catch {
-            log("ERROR tag \(file.path): \(error)")
+            log("ERROR tag \(item.path): \(error)")
         }
     }
 
-    private func enumerateFiles(_ folder: FolderConfig) -> [URL] {
-        let fm = FileManager.default
+    /// Collect the items to age from a folder. Items are always whole top-level
+    /// entries (files, folders, or bundles) — Sift never descends into a
+    /// directory it did not create. For a Review stage, category subfolders that
+    /// Sift itself created are transparent: their direct children are the items
+    /// to age. Everything else is returned as-is.
+    private func enumerateItems(_ folder: FolderConfig, reviewStage: Bool) -> [URL] {
         let base = URL(fileURLWithPath: standardized(folder.path))
         let ignore = Set(folder.ignore ?? [])
-        guard let items = try? fm.contentsOfDirectory(
-            at: base, includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else {
-            log("SKIP unreadable folder \(folder.path)")
-            return []
-        }
+        guard let top = listDir(base, logPath: folder.path) else { return [] }
+        let categoryNames = resolver.categoryFolderNames()
         var result: [URL] = []
-        for item in items {
-            if ignore.contains(item.lastPathComponent) { continue }
-            let isDir = (try? item.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            if isDir {
-                if folder.recurse {
-                    result.append(contentsOf: filesUnder(item))
-                } else if !folder.filesOnly {
-                    result.append(item)
+        for entry in top {
+            if ignore.contains(entry.lastPathComponent) { continue }
+            if reviewStage && isDirectory(entry) && categoryNames.contains(entry.lastPathComponent) {
+                // Transparent: age the whole items inside Sift's own category
+                // subfolder, one level down. Never descend into those items.
+                if let children = listDir(entry, logPath: entry.path) {
+                    result.append(contentsOf: children)
                 }
             } else {
-                result.append(item)
+                result.append(entry)
             }
         }
         return result
     }
 
-    private func filesUnder(_ dir: URL) -> [URL] {
-        let fm = FileManager.default
-        guard let en = fm.enumerator(at: dir, includingPropertiesForKeys: [.isDirectoryKey],
-                                     options: [.skipsHiddenFiles]) else { return [] }
-        var files: [URL] = []
-        for case let url as URL in en {
-            let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-            if !isDir { files.append(url) }
+    private func listDir(_ url: URL, logPath: String) -> [URL]? {
+        guard let items = try? FileManager.default.contentsOfDirectory(
+            at: url, includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]) else {
+            log("SKIP unreadable folder \(logPath)")
+            return nil
         }
-        return files
+        return items
+    }
+
+    private func isDirectory(_ url: URL) -> Bool {
+        (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
     }
 
     private func standardized(_ path: String) -> String {

@@ -20,8 +20,6 @@ public struct Tagging: Codable {
 
 public struct FolderConfig: Codable {
     public let path: String
-    public let recurse: Bool
-    public let filesOnly: Bool
     public let ignore: [String]?
     public let rules: [Rule]
 }
