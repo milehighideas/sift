@@ -18,8 +18,9 @@ It never deletes — the user empties Delete folders manually. See `README.md` f
 - Single test: `swift test --filter SiftCoreTests.DurationTests`
 
 Formatting uses **Apple's `swift-format`** (`brew install swift-format`) — NOT SwiftLint or the
-Nick Lockwood SwiftFormat. There is no config file, so it runs on built-in defaults with `--strict`
-(warnings are errors). Match existing style: 4-space indent, `public` API on SiftCore types.
+Nick Lockwood SwiftFormat. Config is pinned in `.swift-format` (4-space indent, 100-col). The whole
+tree conforms and the pre-commit runs `lint --strict`, so keep it clean: run
+`swift-format format -i -r Sources Tests` before committing Swift changes.
 
 ## Repo setup
 

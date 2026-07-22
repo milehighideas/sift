@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import SiftCore
 
 final class DurationTests: XCTestCase {
@@ -11,13 +12,23 @@ final class DurationTests: XCTestCase {
 
     func testRejectsBadInput() {
         XCTAssertThrowsError(try parseDuration("")) { XCTAssertEqual($0 as? DurationError, .empty) }
-        XCTAssertThrowsError(try parseDuration("7x")) { XCTAssertEqual($0 as? DurationError, .badUnit("x")) }
-        XCTAssertThrowsError(try parseDuration("abc")) { XCTAssertEqual($0 as? DurationError, .badFormat("abc")) }
+        XCTAssertThrowsError(try parseDuration("7x")) {
+            XCTAssertEqual($0 as? DurationError, .badUnit("x"))
+        }
+        XCTAssertThrowsError(try parseDuration("abc")) {
+            XCTAssertEqual($0 as? DurationError, .badFormat("abc"))
+        }
     }
 
     func testRejectsNonFiniteAndNegativeDurations() {
-        XCTAssertThrowsError(try parseDuration("-5d")) { XCTAssertEqual($0 as? DurationError, .badFormat("-5d")) }
-        XCTAssertThrowsError(try parseDuration("infd")) { XCTAssertEqual($0 as? DurationError, .badFormat("infd")) }
-        XCTAssertThrowsError(try parseDuration("nand")) { XCTAssertEqual($0 as? DurationError, .badFormat("nand")) }
+        XCTAssertThrowsError(try parseDuration("-5d")) {
+            XCTAssertEqual($0 as? DurationError, .badFormat("-5d"))
+        }
+        XCTAssertThrowsError(try parseDuration("infd")) {
+            XCTAssertEqual($0 as? DurationError, .badFormat("infd"))
+        }
+        XCTAssertThrowsError(try parseDuration("nand")) {
+            XCTAssertEqual($0 as? DurationError, .badFormat("nand"))
+        }
     }
 }

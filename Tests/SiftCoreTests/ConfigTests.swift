@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import SiftCore
 
 final class ConfigTests: XCTestCase {
@@ -10,21 +11,21 @@ final class ConfigTests: XCTestCase {
     }
 
     private let valid = """
-    {
-      "settings": {
-        "interval": "1h", "log": "~/Library/Logs/sift.log", "dryRun": false,
-        "categories": { "images": ["png"] },
-        "tagging": { "enabled": true, "prefix": "Sift" }
-      },
-      "folders": [
-        { "path": "~/Desktop", "recurse": false, "filesOnly": true,
-          "ignore": ["Desktop to Review"],
-          "rules": [ { "name": "r", "match": "all",
-            "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
-            "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] } ] }
-      ]
-    }
-    """
+        {
+          "settings": {
+            "interval": "1h", "log": "~/Library/Logs/sift.log", "dryRun": false,
+            "categories": { "images": ["png"] },
+            "tagging": { "enabled": true, "prefix": "Sift" }
+          },
+          "folders": [
+            { "path": "~/Desktop", "recurse": false, "filesOnly": true,
+              "ignore": ["Desktop to Review"],
+              "rules": [ { "name": "r", "match": "all",
+                "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+                "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] } ] }
+          ]
+        }
+        """
 
     func testLoadsValidConfig() throws {
         let cfg = try loadConfig(at: writeTemp(valid))
@@ -33,21 +34,23 @@ final class ConfigTests: XCTestCase {
     }
 
     func testRejectsBadInterval() throws {
-        let bad = valid.replacingOccurrences(of: "\"interval\": \"1h\"", with: "\"interval\": \"nope\"")
+        let bad = valid.replacingOccurrences(
+            of: "\"interval\": \"1h\"", with: "\"interval\": \"nope\"")
         XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
     }
 
     func testRejectsUnknownOnConflict() throws {
-        let bad = valid.replacingOccurrences(of: "\"onConflict\": \"rename\"", with: "\"onConflict\": \"explode\"")
+        let bad = valid.replacingOccurrences(
+            of: "\"onConflict\": \"rename\"", with: "\"onConflict\": \"explode\"")
         XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
     }
 
     func testRejectsMultipleRules() throws {
         let secondRule = """
-        , { "name": "r2", "match": "all",
-            "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
-            "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] }
-        """
+            , { "name": "r2", "match": "all",
+                "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+                "actions": [ { "move": { "to": "~/Desktop/Desktop to Review", "sortInto": "category", "onConflict": "rename" } } ] }
+            """
         let bad = valid.replacingOccurrences(
             of: "\"onConflict\": \"rename\" } } ] } ] }",
             with: "\"onConflict\": \"rename\" } } ] } \(secondRule) ] }")

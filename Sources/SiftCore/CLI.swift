@@ -19,7 +19,10 @@ public func parseArgs(_ argv: [String]) -> ParsedArgs {
         let arg = argv[i]
         switch arg {
         case "--config":
-            if i + 1 < argv.count { configPath = argv[i + 1]; i += 1 }
+            if i + 1 < argv.count {
+                configPath = argv[i + 1]
+                i += 1
+            }
         case "--dry-run":
             dryRun = true
         case "--help", "-h", "help":
@@ -34,33 +37,35 @@ public func parseArgs(_ argv: [String]) -> ParsedArgs {
 
 private func printUsage(to handle: FileHandle) {
     let usage = """
-    sift — file aging automation
+        sift — file aging automation
 
-    Usage: sift <command> [--config <path>] [--dry-run]
+        Usage: sift <command> [--config <path>] [--dry-run]
 
-    Commands:
-      run         Perform one scan pass (moves/tags files)
-      status      Show what would move and each file's countdown (no changes)
-      install     Install and load the launchd agent
-      uninstall   Unload and remove the launchd agent
-      help        Show this help
+        Commands:
+          run         Perform one scan pass (moves/tags files)
+          status      Show what would move and each file's countdown (no changes)
+          install     Install and load the launchd agent
+          uninstall   Unload and remove the launchd agent
+          help        Show this help
 
-    Options:
-      --config <path>   Config file (default: ~/.config/sift/sift.json)
-      --dry-run         Log actions without changing anything
+        Options:
+          --config <path>   Config file (default: ~/.config/sift/sift.json)
+          --dry-run         Log actions without changing anything
 
-    """
+        """
     handle.write(Data(usage.utf8))
 }
 
 public func runCLI(_ argv: [String]) -> Int32 {
     let args = parseArgs(argv)
     switch args.command {
-    case "run":       return cmdRun(args, statusOnly: false)
-    case "status":    return cmdRun(args, statusOnly: true)
-    case "install":   return cmdInstall(args)
+    case "run": return cmdRun(args, statusOnly: false)
+    case "status": return cmdRun(args, statusOnly: true)
+    case "install": return cmdInstall(args)
     case "uninstall": return cmdUninstall()
-    case "help":      printUsage(to: FileHandle.standardOutput); return 0
+    case "help":
+        printUsage(to: FileHandle.standardOutput)
+        return 0
     case "":
         FileHandle.standardError.write(Data("sift: no command given\n".utf8))
         printUsage(to: FileHandle.standardError)
@@ -73,8 +78,7 @@ public func runCLI(_ argv: [String]) -> Int32 {
 }
 
 private func loadOrReport(_ path: String) -> Config? {
-    do { return try loadConfig(at: path) }
-    catch {
+    do { return try loadConfig(at: path) } catch {
         FileHandle.standardError.write(Data("config error: \(error)\n".utf8))
         return nil
     }
@@ -103,6 +107,12 @@ private func cmdInstall(_ args: ParsedArgs) -> Int32 {
 }
 
 private func cmdUninstall() -> Int32 {
-    do { try uninstallAgent(); print("uninstalled \(launchdLabel)"); return 0 }
-    catch { FileHandle.standardError.write(Data("uninstall failed: \(error)\n".utf8)); return 1 }
+    do {
+        try uninstallAgent()
+        print("uninstalled \(launchdLabel)")
+        return 0
+    } catch {
+        FileHandle.standardError.write(Data("uninstall failed: \(error)\n".utf8))
+        return 1
+    }
 }

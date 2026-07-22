@@ -8,8 +8,10 @@ public func launchdPlistPath() -> String {
     expandTilde("~/Library/LaunchAgents/\(launchdLabel).plist")
 }
 
-public func makeLaunchdPlist(binaryPath: String, configPath: String,
-                             interval: TimeInterval, logPath: String) -> String {
+public func makeLaunchdPlist(
+    binaryPath: String, configPath: String,
+    interval: TimeInterval, logPath: String
+) -> String {
     let dict: [String: Any] = [
         "Label": launchdLabel,
         "ProgramArguments": [binaryPath, "run", "--config", configPath],
@@ -18,8 +20,11 @@ public func makeLaunchdPlist(binaryPath: String, configPath: String,
         "StandardOutPath": logPath,
         "StandardErrorPath": logPath,
     ]
-    guard let data = try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0),
-          let xml = String(data: data, encoding: .utf8) else {
+    guard
+        let data = try? PropertyListSerialization.data(
+            fromPropertyList: dict, format: .xml, options: 0),
+        let xml = String(data: data, encoding: .utf8)
+    else {
         return ""
     }
     return xml

@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import SiftCore
 
 final class ExampleConfigTests: XCTestCase {

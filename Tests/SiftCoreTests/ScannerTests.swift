@@ -1,4 +1,5 @@
 import XCTest
+
 @testable import SiftCore
 
 final class ScannerTests: XCTestCase {
@@ -22,13 +23,28 @@ final class ScannerTests: XCTestCase {
         let live = FolderConfig(
             path: desktop,
             ignore: ["Desktop to Review", "Desktop to Delete"],
-            rules: [Rule(name: "toReview", match: "all", conditions: [cond],
-                actions: [Action(move: MoveAction(to: review, sortInto: "category", onConflict: "rename"))])])
+            rules: [
+                Rule(
+                    name: "toReview", match: "all", conditions: [cond],
+                    actions: [
+                        Action(
+                            move: MoveAction(to: review, sortInto: "category", onConflict: "rename")
+                        )
+                    ])
+            ])
         let reviewFolder = FolderConfig(
             path: review, ignore: nil,
-            rules: [Rule(name: "toDelete", match: "all", conditions: [cond],
-                actions: [Action(move: MoveAction(to: delete, sortInto: "category", onConflict: "rename"))])])
-        let settings = Settings(interval: "1h", log: home.appendingPathComponent("sift.log").path,
+            rules: [
+                Rule(
+                    name: "toDelete", match: "all", conditions: [cond],
+                    actions: [
+                        Action(
+                            move: MoveAction(to: delete, sortInto: "category", onConflict: "rename")
+                        )
+                    ])
+            ])
+        let settings = Settings(
+            interval: "1h", log: home.appendingPathComponent("sift.log").path,
             dryRun: false, categories: ["images": ["png"], "documents": ["rtfd", "txt", "pdf"]],
             tagging: Tagging(enabled: true, prefix: "Sift"))
         return Config(settings: settings, folders: [live, reviewFolder])
@@ -103,11 +119,17 @@ final class ScannerTests: XCTestCase {
         // Whole folder moved into the Folders category.
         XCTAssertTrue(FileManager.default.fileExists(atPath: movedDir.path))
         // Its child moved WITH it — not extracted/flattened into a category root.
-        XCTAssertTrue(FileManager.default.fileExists(atPath: movedDir.appendingPathComponent("readme.txt").path))
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: home.appendingPathComponent("Desktop/myproj").path))
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: home.appendingPathComponent("Desktop/Desktop to Review/Documents/readme.txt").path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: movedDir.appendingPathComponent("readme.txt").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/myproj").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent(
+                    "Desktop/Desktop to Review/Documents/readme.txt"
+                ).path))
     }
 
     func testBundleCategorizedByExtensionAndKeptIntact() throws {
@@ -116,21 +138,28 @@ final class ScannerTests: XCTestCase {
         let moved = home.appendingPathComponent("Desktop/Desktop to Review/Documents/notes.rtfd")
         // Bundle categorized by its extension and moved whole.
         XCTAssertTrue(FileManager.default.fileExists(atPath: moved.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: moved.appendingPathComponent("TXT.rtf").path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: moved.appendingPathComponent("TXT.rtf").path))
         // Its internals were NOT ripped out into the Documents root.
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: home.appendingPathComponent("Desktop/Desktop to Review/Documents/TXT.rtf").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Review/Documents/TXT.rtf")
+                    .path))
     }
 
     func testReviewFolderDoesNotDescendIntoUserFolder() throws {
         // A user folder sitting inside a Review category subfolder must be aged
         // as a whole unit, never walked into.
-        _ = try makeDir("Desktop/Desktop to Review/Folders/project", child: "a.txt", addedDaysAgo: 10)
+        _ = try makeDir(
+            "Desktop/Desktop to Review/Folders/project", child: "a.txt", addedDaysAgo: 10)
         Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
         let movedDir = home.appendingPathComponent("Desktop/Desktop to Delete/Folders/project")
         XCTAssertTrue(FileManager.default.fileExists(atPath: movedDir.path))
-        XCTAssertTrue(FileManager.default.fileExists(atPath: movedDir.appendingPathComponent("a.txt").path))
-        XCTAssertFalse(FileManager.default.fileExists(
-            atPath: home.appendingPathComponent("Desktop/Desktop to Delete/Documents/a.txt").path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: movedDir.appendingPathComponent("a.txt").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Delete/Documents/a.txt")
+                    .path))
     }
 }

@@ -24,14 +24,17 @@ public struct Scanner {
         let destinations = allDestinations()
         var movedThisRun = Set<String>()
         for folder in config.folders {
-            guard let rule = folder.rules.first, let move = rule.actions.first?.move else { continue }
+            guard let rule = folder.rules.first, let move = rule.actions.first?.move else {
+                continue
+            }
             let dest = standardized(move.to)
             let terminalDest = !watched.contains(dest)
             let reviewStage = destinations.contains(standardized(folder.path))
             for item in enumerateItems(folder, reviewStage: reviewStage) {
-                let moved = process(item: item, rule: rule, move: move,
-                                    dest: dest, terminalDest: terminalDest,
-                                    skipMove: movedThisRun.contains(item.path))
+                let moved = process(
+                    item: item, rule: rule, move: move,
+                    dest: dest, terminalDest: terminalDest,
+                    skipMove: movedThisRun.contains(item.path))
                 if let moved = moved { movedThisRun.insert(moved) }
             }
         }
@@ -49,12 +52,17 @@ public struct Scanner {
         return dests
     }
 
-    private func process(item: URL, rule: Rule, move: MoveAction,
-                         dest: String, terminalDest: Bool, skipMove: Bool) -> String? {
+    private func process(
+        item: URL, rule: Rule, move: MoveAction,
+        dest: String, terminalDest: Bool, skipMove: Bool
+    ) -> String? {
         guard let added = dateAdded(of: item.path) else { return nil }
         let matched = (try? ruleMatches(rule, dateAdded: added, now: now)) ?? false
         if matched {
-            if skipMove { log("SKIP double-hop guard \(item.path)"); return nil }
+            if skipMove {
+                log("SKIP double-hop guard \(item.path)")
+                return nil
+            }
             return moveItem(item, move: move, dest: dest, terminalDest: terminalDest)
         } else if terminalDest && config.settings.tagging.enabled {
             tagCountdown(item, rule: rule, added: added, dest: dest)
@@ -63,24 +71,36 @@ public struct Scanner {
     }
 
     @discardableResult
-    private func moveItem(_ item: URL, move: MoveAction, dest: String, terminalDest: Bool) -> String? {
-        let category = move.sortInto == "category"
+    private func moveItem(_ item: URL, move: MoveAction, dest: String, terminalDest: Bool)
+        -> String?
+    {
+        let category =
+            move.sortInto == "category"
             ? resolver.category(for: item.lastPathComponent, isDirectory: isDirectory(item))
             : ""
-        let toDir = category.isEmpty
+        let toDir =
+            category.isEmpty
             ? URL(fileURLWithPath: dest)
             : URL(fileURLWithPath: dest).appendingPathComponent(category)
-        if dryRun { log("DRY move \(item.path) -> \(toDir.path)"); return nil }
+        if dryRun {
+            log("DRY move \(item.path) -> \(toDir.path)")
+            return nil
+        }
         do {
-            guard let moved = try performMove(src: item, toDir: toDir, onConflict: move.onConflict) else {
-                log("SKIP conflict \(item.path)"); return nil
+            guard let moved = try performMove(src: item, toDir: toDir, onConflict: move.onConflict)
+            else {
+                log("SKIP conflict \(item.path)")
+                return nil
             }
-            do { try setDateAdded(moved.path, to: now) } catch { log("ERROR stamp \(moved.path): \(error)") }
+            do { try setDateAdded(moved.path, to: now) } catch {
+                log("ERROR stamp \(moved.path): \(error)")
+            }
             if terminalDest && config.settings.tagging.enabled {
                 let word = lastWord(dest)
                 do {
-                    try setSiftTag(moved.path, text: "\(config.settings.tagging.prefix) · \(word)",
-                                    color: 6, prefix: config.settings.tagging.prefix)
+                    try setSiftTag(
+                        moved.path, text: "\(config.settings.tagging.prefix) · \(word)",
+                        color: 6, prefix: config.settings.tagging.prefix)
                 } catch {
                     log("ERROR tag \(moved.path): \(error)")
                 }
@@ -95,11 +115,15 @@ public struct Scanner {
 
     private func tagCountdown(_ item: URL, rule: Rule, added: Date, dest: String) {
         guard let value = rule.conditions.first?.value,
-              let threshold = try? parseDuration(value) else { return }
+            let threshold = try? parseDuration(value)
+        else { return }
         let n = remainingDays(dateAdded: added, threshold: threshold, now: now)
         guard n > 0 else { return }
         let text = "\(config.settings.tagging.prefix) · \(n)d → \(lastWord(dest))"
-        if dryRun { log("DRY tag \(item.path): \(text)"); return }
+        if dryRun {
+            log("DRY tag \(item.path): \(text)")
+            return
+        }
         do {
             try setSiftTag(item.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
             log("TAG \(item.path): \(text)")
@@ -121,7 +145,8 @@ public struct Scanner {
         var result: [URL] = []
         for entry in top {
             if ignore.contains(entry.lastPathComponent) { continue }
-            if reviewStage && isDirectory(entry) && categoryNames.contains(entry.lastPathComponent) {
+            if reviewStage && isDirectory(entry) && categoryNames.contains(entry.lastPathComponent)
+            {
                 // Transparent: age the whole items inside Sift's own category
                 // subfolder, one level down. Never descend into those items.
                 if let children = listDir(entry, logPath: entry.path) {
@@ -135,9 +160,11 @@ public struct Scanner {
     }
 
     private func listDir(_ url: URL, logPath: String) -> [URL]? {
-        guard let items = try? FileManager.default.contentsOfDirectory(
-            at: url, includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]) else {
+        guard
+            let items = try? FileManager.default.contentsOfDirectory(
+                at: url, includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles])
+        else {
             log("SKIP unreadable folder \(logPath)")
             return nil
         }

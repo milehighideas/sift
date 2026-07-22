@@ -71,19 +71,22 @@ public func loadConfig(at path: String) throws -> Config {
 }
 
 func validate(_ c: Config) throws {
-    do { _ = try parseDuration(c.settings.interval) }
-    catch { throw ConfigError.validation("bad settings.interval: \(c.settings.interval)") }
+    do { _ = try parseDuration(c.settings.interval) } catch {
+        throw ConfigError.validation("bad settings.interval: \(c.settings.interval)")
+    }
 
     for folder in c.folders {
         guard folder.rules.count <= 1 else {
-            throw ConfigError.validation("folder \(folder.path) has more than one rule; v1 supports one rule per folder")
+            throw ConfigError.validation(
+                "folder \(folder.path) has more than one rule; v1 supports one rule per folder")
         }
         for rule in folder.rules {
             guard ["all", "any"].contains(rule.match) else {
                 throw ConfigError.validation("bad rule.match: \(rule.match)")
             }
             guard rule.actions.count <= 1 else {
-                throw ConfigError.validation("rule \(rule.name) has more than one action; v1 supports one action per rule")
+                throw ConfigError.validation(
+                    "rule \(rule.name) has more than one action; v1 supports one action per rule")
             }
             for cond in rule.conditions {
                 guard cond.attr == "date_added" else {
@@ -92,8 +95,9 @@ func validate(_ c: Config) throws {
                 guard cond.op == "older_than" else {
                     throw ConfigError.validation("unsupported op: \(cond.op)")
                 }
-                do { _ = try parseDuration(cond.value) }
-                catch { throw ConfigError.validation("bad condition value: \(cond.value)") }
+                do { _ = try parseDuration(cond.value) } catch {
+                    throw ConfigError.validation("bad condition value: \(cond.value)")
+                }
             }
             for action in rule.actions {
                 guard ["category", "none"].contains(action.move.sortInto) else {

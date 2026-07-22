@@ -1,5 +1,5 @@
-import Foundation
 import Darwin
+import Foundation
 
 public enum FSMetaError: Error {
     case setattr(Int32)
@@ -13,7 +13,8 @@ private let tagsXattr = "com.apple.metadata:" + "_kMDItemUserTags"
 public func dateAdded(of path: String) -> Date? {
     let url = URL(fileURLWithPath: path)
     if let values = try? url.resourceValues(forKeys: [.addedToDirectoryDateKey]),
-       let date = values.addedToDirectoryDate {
+        let date = values.addedToDirectoryDate
+    {
         return date
     }
     return nil
@@ -57,7 +58,8 @@ public func setSiftTag(_ path: String, text: String?, color: Int, prefix: String
     if let text = text {
         tags.append("\(text)\n\(color)")
     }
-    let data = try PropertyListSerialization.data(fromPropertyList: tags, format: .binary, options: 0)
+    let data = try PropertyListSerialization.data(
+        fromPropertyList: tags, format: .binary, options: 0)
     let rc = data.withUnsafeBytes { buf in
         setxattr(path, tagsXattr, buf.baseAddress, buf.count, 0, 0)
     }
