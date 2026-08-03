@@ -44,11 +44,21 @@ public struct SiftEvent: Codable, Equatable {
         detail: String? = nil
     ) -> SiftEvent {
         SiftEvent(
-            ts: ISO8601DateFormatter().string(from: Date()), kind: kind, path: path,
+            ts: eventStampFormatter.string(from: Date()), kind: kind, path: path,
             to: to, before: before, after: after, remainingDays: remainingDays,
             detail: detail)
     }
 }
+
+/// Fractional seconds are load-bearing, not decoration: a single pass performs
+/// many actions per second, and second-granular stamps make the history sort
+/// arbitrarily within each second — moves appearing above the optimize that
+/// preceded them. The format is fixed-width, so lexical sorting stays correct.
+private let eventStampFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+}()
 
 /// Appends one JSON object per line. Failures are swallowed: a missing history
 /// row must never break a run.

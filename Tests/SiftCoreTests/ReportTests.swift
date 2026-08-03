@@ -99,6 +99,22 @@ final class ReportTests: XCTestCase {
         XCTAssertFalse(html.contains(NSHomeDirectory() + "/Desktop/a.png"))
     }
 
+    func testDisplayStampTrimsFractionalSeconds() {
+        XCTAssertEqual(displayStamp("2026-08-03T18:18:49.123Z"), "2026-08-03T18:18:49Z")
+        // Already trimmed, or an unexpected shape, passes through unchanged.
+        XCTAssertEqual(displayStamp("2026-08-03T18:18:49Z"), "2026-08-03T18:18:49Z")
+        XCTAssertEqual(displayStamp("garbage"), "garbage")
+    }
+
+    func testActivityShowsTrimmedStamp() {
+        let html = render(
+            history: [
+                SiftEvent(ts: "2026-08-03T18:18:49.123Z", kind: .move, path: "/a", to: "/b")
+            ])
+        XCTAssertTrue(html.contains("2026-08-03T18:18:49Z"))
+        XCTAssertFalse(html.contains(".123"))
+    }
+
     func testFormatBytesScales() {
         XCTAssertEqual(formatBytes(512), "512 B")
         XCTAssertEqual(formatBytes(2048), "2.0 KB")

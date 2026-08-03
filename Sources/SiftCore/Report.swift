@@ -83,7 +83,7 @@ private func historyTable(_ history: [SiftEvent]) -> String {
             detail = esc(event.detail ?? "")
         }
         return """
-            <tr><td class="ts">\(esc(event.ts))</td>\
+            <tr><td class="ts">\(esc(displayStamp(event.ts)))</td>\
             <td><span class="kind k-\(event.kind.rawValue)">\(esc(event.kind.rawValue))</span></td>\
             <td class="path">\(esc(abbreviate(event.path)))</td>\
             <td class="detail">\(detail)</td></tr>
@@ -149,6 +149,15 @@ func esc(_ s: String) -> String {
         .replacingOccurrences(of: "<", with: "&lt;")
         .replacingOccurrences(of: ">", with: "&gt;")
         .replacingOccurrences(of: "\"", with: "&quot;")
+}
+
+/// Events carry fractional seconds so they sort deterministically; that
+/// precision is noise to a reader, so trim it for display.
+func displayStamp(_ ts: String) -> String {
+    guard let dot = ts.firstIndex(of: "."), let z = ts.lastIndex(of: "Z"), dot < z else {
+        return ts
+    }
+    return ts.replacingCharacters(in: dot..<z, with: "")
 }
 
 func abbreviate(_ path: String) -> String {

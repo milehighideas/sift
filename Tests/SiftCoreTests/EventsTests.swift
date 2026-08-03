@@ -32,6 +32,18 @@ final class EventsTests: XCTestCase {
         XCTAssertNil(event.before)
     }
 
+    /// A single pass performs many actions per second. Without sub-second
+    /// precision the history sorts arbitrarily inside each second — moves
+    /// appearing above the optimize that actually preceded them.
+    func testStampsCarryFractionalSecondsAndSortLexically() {
+        let first = SiftEvent.make(kind: .optimize, path: "/a")
+        let second = SiftEvent.make(kind: .move, path: "/b")
+        XCTAssertTrue(first.ts.contains("."), "expected fractional seconds in \(first.ts)")
+        XCTAssertTrue(first.ts <= second.ts)
+        // Fixed-width format, so lexical order equals chronological order.
+        XCTAssertEqual(first.ts.count, second.ts.count)
+    }
+
     // MARK: - Appending
 
     func testAppendWritesOneLinePerEvent() throws {
