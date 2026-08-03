@@ -5,13 +5,22 @@ public struct Scanner {
     let now: Date
     let dryRun: Bool
     let log: (String) -> Void
+    /// Structured history sink. Defaults to a no-op — unlike
+    /// `setSiftTag(preserving:)`, where a wrong default destroys a user's tag,
+    /// the worst case here is a missing history row. That asymmetry is
+    /// deliberate; do not "fix" it by removing this default.
+    let event: (SiftEvent) -> Void
     let resolver: CategoryResolver
 
-    public init(config: Config, now: Date, dryRun: Bool, log: @escaping (String) -> Void) {
+    public init(
+        config: Config, now: Date, dryRun: Bool, log: @escaping (String) -> Void,
+        event: @escaping (SiftEvent) -> Void = { _ in }
+    ) {
         self.config = config
         self.now = now
         self.dryRun = dryRun
         self.log = log
+        self.event = event
         self.resolver = CategoryResolver(map: config.settings.categories)
     }
 
@@ -66,11 +75,25 @@ public struct Scanner {
                 log("SKIP double-hop guard \(item.path)")
                 return nil
             }
+            if dryRun { event(pendingEvent(item, rule: rule, added: added)) }
             return moveItem(item, move: move, dest: dest, terminalDest: terminalDest)
-        } else if terminalDest && config.settings.tagging.enabled {
+        }
+        if dryRun { event(pendingEvent(item, rule: rule, added: added)) }
+        if terminalDest && config.settings.tagging.enabled {
             tagCountdown(item, rule: rule, added: added, dest: dest)
         }
         return nil
+    }
+
+    /// Dry-run only: what this item is waiting on. Reported from `process`
+    /// rather than `tagCountdown` because the latter runs only for terminal
+    /// destinations, which would omit every live-folder item counting down
+    /// toward Review — exactly the rows a "due next" view needs.
+    private func pendingEvent(_ item: URL, rule: Rule, added: Date) -> SiftEvent {
+        let days =
+            (rule.conditions.first?.value).flatMap { try? parseDuration($0) }
+            .map { remainingDays(dateAdded: added, threshold: $0, now: now) } ?? 0
+        return SiftEvent.make(kind: .pending, path: item.path, remainingDays: days)
     }
 
     @discardableResult
@@ -110,6 +133,9 @@ public struct Scanner {
                 }
             }
             log("MOVE \(item.path) -> \(moved.path)")
+            event(
+                SiftEvent.make(
+                    kind: .move, path: item.path, to: moved.path, detail: lastWord(dest)))
             return moved.path
         } catch {
             log("ERROR move \(item.path): \(error)")
@@ -199,6 +225,7 @@ public struct Scanner {
             log("ERROR stamp \(item.path): \(error)")
         }
         log("EXPIRE \(item.path): keep tag lapsed, resuming aging")
+        event(SiftEvent.make(kind: .pinExpire, path: item.path))
         return true
     }
 
@@ -212,6 +239,7 @@ public struct Scanner {
                 item.path, text: text, color: 6, prefix: config.settings.tagging.prefix,
                 preserving: markerPredicate)
             log("KEEP \(item.path): \(text)")
+            event(SiftEvent.make(kind: .pinNormalize, path: item.path, detail: text))
         } catch {
             log("ERROR normalize \(item.path): \(error)")
         }

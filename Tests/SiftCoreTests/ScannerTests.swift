@@ -148,6 +148,70 @@ final class ScannerTests: XCTestCase {
                     .path))
     }
 
+    // MARK: - Events
+
+    private func collectEvents(_ cfg: Config? = nil, dryRun: Bool = false) -> [SiftEvent] {
+        var events: [SiftEvent] = []
+        Scanner(
+            config: cfg ?? config(), now: Date(), dryRun: dryRun, log: { _ in },
+            event: { events.append($0) }
+        ).run()
+        return events
+    }
+
+    func testMoveEmitsOneMoveEvent() throws {
+        _ = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        let moves = collectEvents().filter { $0.kind == .move }
+        XCTAssertEqual(moves.count, 1)
+        XCTAssertTrue(moves[0].path.hasSuffix("Desktop/old.png"))
+        XCTAssertTrue(moves[0].to?.hasSuffix("Desktop to Review/Images/old.png") ?? false)
+    }
+
+    func testCountdownTaggingEmitsNoActionEvents() throws {
+        // A fresh Review item only gets its countdown rewritten — pure churn,
+        // and the reason this event log exists. It must not appear as activity.
+        _ = try makeFile("Desktop/Desktop to Review/Images/new.png", addedDaysAgo: 1)
+        let events = collectEvents()
+        XCTAssertTrue(events.allSatisfy { $0.kind == .pending })
+    }
+
+    func testPinNormalizationEmitsEvent() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep 30d")
+        let events = collectEvents().filter { $0.kind == .pinNormalize }
+        XCTAssertEqual(events.count, 1)
+        XCTAssertTrue(events[0].detail?.hasPrefix("Sift · Keep until") ?? false)
+    }
+
+    func testPinExpiryEmitsEvent() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep until \(isoDay(offsetDays: -2))")
+        let events = collectEvents().filter { $0.kind == .pinExpire }
+        XCTAssertEqual(events.count, 1)
+        XCTAssertTrue(events[0].path.hasSuffix("old.png"))
+    }
+
+    func testDryRunEmitsPendingAndNoActions() throws {
+        _ = try makeFile("Desktop/soon.png", addedDaysAgo: 5)
+        _ = try makeFile("Desktop/due.png", addedDaysAgo: 10)
+        let events = collectEvents(dryRun: true)
+        XCTAssertTrue(events.allSatisfy { $0.kind == .pending })
+        let byName = Dictionary(
+            uniqueKeysWithValues: events.map { (($0.path as NSString).lastPathComponent, $0) })
+        // 5 days elapsed against a 7d threshold -> 2 days left.
+        XCTAssertEqual(byName["soon.png"]?.remainingDays, 2)
+        // Overdue -> 0, meaning "moves on the next real pass".
+        XCTAssertEqual(byName["due.png"]?.remainingDays, 0)
+    }
+
+    func testPendingIsEmittedForLiveFolderItemsNotJustReview() throws {
+        // tagCountdown only runs for terminal destinations, so emitting from
+        // there would omit every live-folder item counting down to Review.
+        _ = try makeFile("Desktop/soon.png", addedDaysAgo: 3)
+        let pending = collectEvents(dryRun: true).filter { $0.kind == .pending }
+        XCTAssertTrue(pending.contains { $0.path.hasSuffix("Desktop/soon.png") })
+    }
+
     // MARK: - Log rotation config (dogfood)
 
     /// The shipped log-rotation entry is pure config; this locks the engine
