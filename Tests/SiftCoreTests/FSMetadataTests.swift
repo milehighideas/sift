@@ -55,6 +55,60 @@ final class FSMetadataTests: XCTestCase {
         XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · 3d → Delete") })
     }
 
+    func testXattrCaptureRestoreRoundTrip() throws {
+        let src = try tempFile()
+        let dst = try tempFile()
+        defer {
+            try? FileManager.default.removeItem(atPath: src)
+            try? FileManager.default.removeItem(atPath: dst)
+        }
+        try setSiftTag(
+            src, text: "Sift · 3d → Delete", color: 7, prefix: "Sift",
+            preserving: { _ in false })
+        let attrs = captureXattrs(of: src)
+        XCTAssertFalse(attrs.isEmpty)
+        XCTAssertTrue(restoreXattrs(attrs, to: dst))
+        XCTAssertEqual(rawTags(of: dst), rawTags(of: src))
+    }
+
+    /// macOS attaches its own attributes (com.apple.provenance) to every new
+    /// file, so "no xattrs" is not a reachable state. What matters is that an
+    /// untagged file carries no user-tags attribute, and that whatever the
+    /// system did attach round-trips rather than erroring on restore.
+    func testCaptureXattrsOnUntaggedFileHasNoUserTags() throws {
+        let src = try tempFile()
+        let dst = try tempFile()
+        defer {
+            try? FileManager.default.removeItem(atPath: src)
+            try? FileManager.default.removeItem(atPath: dst)
+        }
+        let attrs = captureXattrs(of: src)
+        XCTAssertFalse(attrs.contains { $0.name.hasSuffix("_kMDItemUserTags") })
+        XCTAssertTrue(restoreXattrs(attrs, to: dst))
+        XCTAssertTrue(rawTags(of: dst).isEmpty)
+    }
+
+    func testAddSiftTagAppendsWithoutTouchingOthers() throws {
+        let path = try tempFile()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        try setSiftTag(
+            path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift",
+            preserving: { _ in false })
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains("Sift · Optimized\n2"))
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · 3d → Delete") })
+    }
+
+    func testAddSiftTagIsIdempotent() throws {
+        let path = try tempFile()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        let markers = rawTags(of: path).filter { $0.hasPrefix("Sift · Optimized") }
+        XCTAssertEqual(markers.count, 1)
+    }
+
     func testSiftTagClearReplacesKeepTagWhenNotPreserved() throws {
         let path = try tempFile()
         defer { try? FileManager.default.removeItem(atPath: path) }
