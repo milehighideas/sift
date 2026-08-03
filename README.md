@@ -1,8 +1,13 @@
 # Sift
 
-A tiny, zero-dependency macOS file-automation tool. Ages items out of Desktop and
-Downloads through a two-stage review→delete pipeline, sorts them into category
-subfolders, and tags them in Finder with a countdown.
+A tiny macOS file-automation tool. It ages items out of Desktop and Downloads
+through a two-stage review→delete pipeline, sorts them into category subfolders,
+tags them in Finder with a countdown, and losslessly shrinks images on the way
+through. It even rotates its own log using its own rules.
+
+Zero package dependencies — Foundation and system frameworks only. Image
+optimization shells out to small CLI tools if they're installed, and quietly
+skips if they aren't.
 
 ## How it works
 
@@ -19,6 +24,23 @@ extension (e.g. `.rtfd` → `Documents/`).
 
 Files in a Review folder carry a Finder tag `Sift · Nd → Delete` (orange) that
 ticks down each run; files in Delete carry `Sift · Delete` (red).
+
+## Finder tags at a glance
+
+Sift reads and writes a small tag vocabulary. The two you apply yourself are
+`Sift · Keep` and `Keep OG`; the rest Sift maintains.
+
+| Tag | Who sets it | Effect |
+| --- | --- | --- |
+| `Sift · Keep` | you | Never moves. See [Keeping something](#keeping-something). |
+| `Sift · Keep 30d` · `Sift · Keep until 2026-09-02` | you | Pinned for a while, then resumes aging. |
+| `Keep OG` | you | Never optimized. Does **not** stop aging. |
+| `Sift · Optimized` | Sift | Already shrunk; skipped from here on. Remove it to redo. |
+| `Sift · Nd → Delete` | Sift | Countdown to the next stage. |
+| `Sift · Delete` · `Sift · Archive` | Sift | Sitting in a terminal folder. |
+
+`Sift · Keep` and `Keep OG` are independent and combine fine — one protects the
+file's *location*, the other its *bytes*.
 
 ## Keeping something
 
@@ -96,10 +118,15 @@ Installing the agent with optimization enabled adds launchd `WatchPaths` for the
 live folders, so a new screenshot or download is optimized within seconds of
 landing rather than waiting for the next hourly pass.
 
-**First run:** every existing unoptimized image is processed once. With a large
-backlog that single pass can take on the order of an hour of background CPU;
-every later pass skips tagged files in milliseconds. To do the heavy pass on your
-own terms, run `sift run` manually once before `sift install`.
+**First run:** every existing unoptimized image is processed once, then never
+again. Only images Sift can actually see are candidates — top-level items in the
+watched folders plus one level inside its own category subfolders. Images nested
+in *your* folders are never touched, so the backlog is usually far smaller than a
+recursive `find` would suggest (on the author's machine, 104 files in ~90 seconds,
+where `find` reported 2,232). Later passes skip tagged files in milliseconds.
+
+If you'd rather not have a background agent do the first sweep, run `sift run`
+manually once before `sift install`.
 
 ## Log rotation (dogfood)
 
@@ -133,11 +160,29 @@ cp sift.example.json ~/.config/sift/sift.json   # then edit to taste
 sift install                                    # schedules the launchd agent
 ```
 
+Log and archive directories are created on demand — nothing to set up.
+
+Image optimization is optional and needs at least one external tool. Either
+install them, or install [ImageOptim](https://imageoptim.com) and Sift will
+borrow the binaries from its bundle:
+
+```bash
+brew install oxipng jpeg-turbo gifsicle   # png, jpeg, gif respectively
+```
+
+Without them Sift logs `SKIP no optimizer for <format>` once per run and does
+everything else normally.
+
 ## Commands
 
-- `sift run [--config <path>] [--dry-run]` — one pass.
-- `sift status` — show what would move and each file's countdown; no changes.
+- `sift run [--config <path>] [--dry-run]` — one pass: optimize first, then age.
+- `sift status` — show what would be optimized, what would move, and each file's
+  countdown. Read-only; never writes bytes or tags.
 - `sift install` / `sift uninstall` — manage the launchd agent.
+
+The agent runs on `settings.interval` and, when optimization is enabled, also
+whenever something lands in a live folder (launchd `WatchPaths`), so new
+screenshots and downloads are handled within seconds.
 
 ## Config
 
