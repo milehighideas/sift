@@ -148,6 +148,61 @@ final class ScannerTests: XCTestCase {
                     .path))
     }
 
+    // MARK: - Log rotation config (dogfood)
+
+    /// The shipped log-rotation entry is pure config; this locks the engine
+    /// behavior it relies on: flat move (sortInto none), terminal tag, the
+    /// Archive destination ignored as an item, and rename-on-conflict for the
+    /// second rotation.
+    func testLogRotationConfigMovesOldLogFlatIntoArchive() throws {
+        let logs = home.appendingPathComponent("Logs")
+        let archive = logs.appendingPathComponent("Archive")
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: true)
+        try setDateAdded(archive.path, to: Date().addingTimeInterval(-30 * 86400))
+        let cond = Condition(attr: "date_added", op: "older_than", value: "7d")
+        let rotation = FolderConfig(
+            path: logs.path, ignore: ["Archive"],
+            rules: [
+                Rule(
+                    name: "rotate", match: "all", conditions: [cond],
+                    actions: [
+                        Action(
+                            move: MoveAction(
+                                to: archive.path, sortInto: "none", onConflict: "rename"))
+                    ])
+            ])
+        let settings = Settings(
+            interval: "1h", log: logs.appendingPathComponent("sift.log").path,
+            dryRun: false, categories: ["images": ["png"]],
+            tagging: Tagging(enabled: true, prefix: "Sift"), optimize: nil)
+        let cfg = Config(settings: settings, folders: [rotation])
+
+        let live = logs.appendingPathComponent("sift.log")
+        try "old log content".write(to: live, atomically: true, encoding: .utf8)
+        try setDateAdded(live.path, to: Date().addingTimeInterval(-10 * 86400))
+
+        Scanner(config: cfg, now: Date(), dryRun: false, log: { _ in }).run()
+
+        // Rotated: gone from the live path, flat in Archive (not Other/).
+        XCTAssertFalse(FileManager.default.fileExists(atPath: live.path))
+        let archived = archive.appendingPathComponent("sift.log")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archived.path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: archive.appendingPathComponent("Other/sift.log").path))
+        // Terminal tag, and the Archive folder was not aged into itself.
+        XCTAssertTrue(rawTags(of: archived.path).contains { $0.hasPrefix("Sift · Archive") })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: archive.path))
+
+        // A second rotation renames rather than replacing.
+        try "newer log content".write(to: live, atomically: true, encoding: .utf8)
+        try setDateAdded(live.path, to: Date().addingTimeInterval(-10 * 86400))
+        Scanner(config: cfg, now: Date(), dryRun: false, log: { _ in }).run()
+        let archivedFiles = try FileManager.default.contentsOfDirectory(atPath: archive.path)
+        XCTAssertEqual(archivedFiles.count, 2)
+        XCTAssertEqual(try String(contentsOf: archived, encoding: .utf8), "old log content")
+    }
+
     // MARK: - Path normalization regression
 
     /// `NSString.standardizingPath` resolves symlinks — including stripping a
