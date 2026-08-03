@@ -112,9 +112,20 @@ key by concatenation). Entries carry a `\n<colorIndex>` suffix, so always compar
   inode; jpegtran cannot write in place at all), and getting one wrong resets the aging clock and
   wipes Finder tags. Verified: a temp+move without restore reset Date Added to *now* and destroyed
   all tags.
-- **Verification before replacement**: candidate must decode with
-  `CGImageSourceGetStatus == .statusComplete` (a truncated file still yields a partial image
-  otherwise), match the original's dimensions, and be strictly smaller.
+- **Verification before replacement**: candidate must be strictly smaller and pass the format's
+  own check. Images: decode with `CGImageSourceGetStatus == .statusComplete` (a truncated file
+  still yields a partial image otherwise) and match the original's dimensions. PDFs: same page
+  count **and same embedded-image count**.
+- **The PDF image-count check is load-bearing, and it must recurse into Form XObjects.**
+  Ghostscript deletes all embedded images while preserving every page — a 96% "saving" that a
+  page-count-only check waves through. And real PDFs put *zero* images directly in page
+  resources (a measured 203-page manual nests all 169 in 252 Form XObjects), so a flat count
+  returns 0 for both documents and the check silently passes everything. `CGContext`-generated
+  fixtures inline their images, so unit tests alone will not catch this — verify against a real
+  document. There is deliberately no lossy PDF mode.
+- **`FileOptimizer.successExitCodes`** exists because qpdf exits 3 on benign warnings while
+  writing correct output. Format quirks live in the registry entry, never as a tool-name
+  special case inside `OptimizePass`.
 - **Marker discipline**: withhold `Sift · Optimized` on tool failure, timeout, and unreadable
   original (a partial download) so those retry; *write* it when the tool simply cannot shrink the
   file so that case never retries. The marker is written regardless of `tagging.enabled` — it is

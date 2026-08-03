@@ -86,10 +86,10 @@ time Sift sees the pin.
 ## Optimizing images
 
 With an `optimize` block in the config, Sift losslessly shrinks images
-(png/jpg/jpeg/gif) in every folder it watches — including the Review and Delete
-stages — before running the aging pass. Pixels are identical, EXIF and other
-metadata are preserved, and both your Finder tags and the *Date Added* aging
-clock survive optimization.
+(png/jpg/jpeg/gif) **and PDFs** in every folder it watches — including the Review
+and Delete stages — before running the aging pass. Pixels are identical, EXIF and
+other metadata are preserved, and both your Finder tags and the *Date Added*
+aging clock survive optimization.
 
 ```json
 "optimize": { "enabled": true, "skipTag": "Keep OG", "level": 2 }
@@ -103,16 +103,23 @@ clock survive optimization.
 - `level` is the oxipng effort level (0–6, default 2). Level 4 buys roughly two
   more percentage points for about 3× the CPU.
 
-Optimizers are external tools located at runtime — `oxipng`, `jpegtran`, and
-`gifsicle`, taken from `$PATH` (Homebrew) or from ImageOptim.app's bundled
-copies. The GUI app is never launched, only its binaries are borrowed. A format
-with no available tool is logged once and skipped; nothing breaks, and installing
-the tool later makes it take effect on the next run.
+Optimizers are external tools located at runtime — `oxipng`, `jpegtran`,
+`gifsicle`, and `qpdf`, taken from `$PATH` (Homebrew) or from ImageOptim.app's
+bundled copies. The GUI app is never launched, only its binaries are borrowed. A
+format with no available tool is logged once and skipped; nothing breaks, and
+installing the tool later makes it take effect on the next run.
 
 Sift never rewrites a file in place. Each candidate is optimized to a temporary
-file that must decode cleanly, match the original's dimensions, and be strictly
-smaller before it atomically replaces the original — so a failed or truncated
-optimization leaves your file exactly as it was.
+file that must be strictly smaller *and* pass a format-specific integrity check
+before it atomically replaces the original — images must decode completely and
+match the original's dimensions; PDFs must keep every page **and every embedded
+image**. A failed or truncated optimization leaves your file exactly as it was.
+
+That PDF image check is not paranoia. Ghostscript, the obvious alternative to
+`qpdf`, shrank a 203-page manual by 96% — by deleting all 169 of its images while
+leaving every page in place. It would have sailed through a page-count check.
+Sift uses `qpdf`, which is genuinely lossless (26% on that file, zero differing
+pixels when rendered), and there is deliberately no lossy option.
 
 Installing the agent with optimization enabled adds launchd `WatchPaths` for the
 live folders, so a new screenshot or download is optimized within seconds of
@@ -167,7 +174,7 @@ install them, or install [ImageOptim](https://imageoptim.com) and Sift will
 borrow the binaries from its bundle:
 
 ```bash
-brew install oxipng jpeg-turbo gifsicle   # png, jpeg, gif respectively
+brew install oxipng jpeg-turbo gifsicle qpdf   # png, jpeg, gif, pdf
 ```
 
 Without them Sift logs `SKIP no optimizer for <format>` once per run and does
