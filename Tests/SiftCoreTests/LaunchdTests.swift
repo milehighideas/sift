@@ -36,6 +36,59 @@ final class LaunchdTests: XCTestCase {
         XCTAssertTrue(plist.contains("<key>StartInterval</key>"))
     }
 
+    private func watchConfig(log: String, folders: [FolderConfig]) -> Config {
+        let settings = Settings(
+            interval: "1h", log: log, dryRun: false, categories: [:],
+            tagging: Tagging(enabled: true, prefix: "Sift"), optimize: nil)
+        return Config(settings: settings, folders: folders)
+    }
+
+    private func folder(_ path: String, to destination: String) -> FolderConfig {
+        let cond = Condition(attr: "date_added", op: "older_than", value: "7d")
+        return FolderConfig(
+            path: path, ignore: nil,
+            rules: [
+                Rule(
+                    name: "r-\(path)", match: "all", conditions: [cond],
+                    actions: [
+                        Action(
+                            move: MoveAction(
+                                to: destination, sortInto: "none", onConflict: "rename"))
+                    ])
+            ])
+    }
+
+    func testWatchPathsExcludesLogDirectory() {
+        // The log folder is a watched live folder (the rotation rule), but
+        // watching it would loop: log write -> launchd wake -> run -> log write.
+        let config = watchConfig(
+            log: "/Users/x/Library/Logs/Sift/sift.log",
+            folders: [
+                folder("/Users/x/Desktop", to: "/Users/x/Desktop/Desktop to Review"),
+                folder("/Users/x/Library/Logs/Sift", to: "/Users/x/Library/Logs/Sift/Archive"),
+            ])
+        XCTAssertEqual(watchPaths(for: config), ["/Users/x/Desktop"])
+    }
+
+    func testWatchPathsExcludesLogDirectoryWithTilde() {
+        // settings.log usually carries a tilde; comparison must expand it.
+        let home = NSHomeDirectory()
+        let config = watchConfig(
+            log: "~/Library/Logs/Sift/sift.log",
+            folders: [
+                folder("\(home)/Desktop", to: "\(home)/Desktop/Desktop to Review"),
+                folder("~/Library/Logs/Sift", to: "~/Library/Logs/Sift/Archive"),
+            ])
+        XCTAssertEqual(watchPaths(for: config), ["\(home)/Desktop"])
+    }
+
+    func testWatchPathsUnaffectedWhenLogLivesElsewhere() {
+        let config = watchConfig(
+            log: "/tmp/sift.log",
+            folders: [folder("/Users/x/Desktop", to: "/Users/x/Desktop/Desktop to Review")])
+        XCTAssertEqual(watchPaths(for: config), ["/Users/x/Desktop"])
+    }
+
     func testWatchPathsAreLiveFoldersOnly() {
         let cond = Condition(attr: "date_added", op: "older_than", value: "7d")
         let live = FolderConfig(

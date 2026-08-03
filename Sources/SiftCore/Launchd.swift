@@ -10,8 +10,14 @@ public func launchdPlistPath() -> String {
 
 /// The folders launchd should watch so a new arrival is handled within seconds
 /// instead of at the next interval: configured folders that are not themselves
-/// move destinations. Review and Delete are excluded on purpose — Sift's own
-/// moves into them would otherwise re-trigger the agent.
+/// move destinations — and never the directory the log lives in.
+///
+/// Review and Delete are excluded because Sift's own moves into them would
+/// re-trigger the agent. The log's directory is excluded for a sharper reason:
+/// every run appends to the log, so watching that folder is a guaranteed
+/// feedback loop (write → wake → run → write), bounded only by
+/// ThrottleInterval. That is an invariant, not a config knob — there is no
+/// setting under which watching it is correct.
 public func watchPaths(for config: Config) -> [String] {
     let destinations = Set(
         config.folders.flatMap { folder in
@@ -19,7 +25,9 @@ public func watchPaths(for config: Config) -> [String] {
                 rule.actions.map { standardizePath($0.move.to) }
             }
         })
-    return config.folders.map { standardizePath($0.path) }.filter { !destinations.contains($0) }
+    let logDir = (standardizePath(config.settings.log) as NSString).deletingLastPathComponent
+    return config.folders.map { standardizePath($0.path) }
+        .filter { !destinations.contains($0) && $0 != logDir }
 }
 
 public func makeLaunchdPlist(
