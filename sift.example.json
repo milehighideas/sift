@@ -1,7 +1,7 @@
 {
   "settings": {
     "interval": "1h",
-    "log": "~/Library/Logs/sift.log",
+    "log": "~/Library/Logs/Sift/sift.log",
     "dryRun": false,
     "categories": {
       "images":     ["jpg","jpeg","png","gif","heic","heif","webp","tiff","tif","bmp","svg","raw","cr2","cr3","nef","arw","dng"],
@@ -48,6 +48,15 @@
         { "name": "Age stale Review items into Delete", "match": "all",
           "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
           "actions": [ { "move": { "to": "~/Downloads/Downloads to Delete", "sortInto": "category", "onConflict": "rename" } } ] }
+      ]
+    },
+    {
+      "path": "~/Library/Logs/Sift",
+      "ignore": ["Archive"],
+      "rules": [
+        { "name": "Rotate sift logs", "match": "all",
+          "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+          "actions": [ { "move": { "to": "~/Library/Logs/Sift/Archive", "sortInto": "none", "onConflict": "rename" } } ] }
       ]
     }
   ]

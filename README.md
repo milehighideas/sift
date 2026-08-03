@@ -101,6 +101,28 @@ backlog that single pass can take on the order of an hour of background CPU;
 every later pass skips tagged files in milliseconds. To do the heavy pass on your
 own terms, run `sift run` manually once before `sift install`.
 
+## Log rotation (dogfood)
+
+Sift rotates its own log with its own rules. The log lives in
+`~/Library/Logs/Sift/`, and the example config watches that folder with a plain
+aging rule: after 7 days the live `sift.log` moves into
+`~/Library/Logs/Sift/Archive/` (`onConflict: rename`, so later rotations become
+`sift 2.log`, `sift 3.log`, …). The logger reopens the file by path on every
+write, so a fresh `sift.log` appears on the next line logged after rotation —
+including the `MOVE` line describing the rotation itself.
+
+The log needs its own directory because Sift's rules match on *Date Added*, not
+filename: pointing a rule at `~/Library/Logs` would age out every other app's
+logs too.
+
+Because every run appends to the log, the log's own directory is never added to
+launchd `WatchPaths` — that would wake Sift in a loop. This exclusion is built
+in; no config needed.
+
+Archives are never deleted (Sift never deletes anything). At typical volume that
+is a few megabytes per month; empty `Archive/` whenever you like, or add a second
+rule moving aged archives into a Delete folder.
+
 ## Build & install
 
 ```bash
@@ -122,7 +144,9 @@ sift install                                    # schedules the launchd agent
 See `sift.example.json`. JSON has no comments, so each field is documented here:
 
 - `settings.interval` — how often the agent runs (`30m`, `1h`, `6h`, `1d`).
-- `settings.log` — log file path.
+- `settings.log` — log file path. Keep it in its own directory (the example uses
+  `~/Library/Logs/Sift/sift.log`) if you point a rotation rule at it; the log's
+  directory is automatically excluded from launchd `WatchPaths`.
 - `settings.dryRun` — global no-op toggle (also `--dry-run`).
 - `settings.categories` — category → extension list; first match wins, else `Other`.
 - `settings.tagging` — `enabled` and the tag text `prefix`.
