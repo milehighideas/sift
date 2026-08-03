@@ -114,8 +114,15 @@ key by concatenation). Entries carry a `\n<colorIndex>` suffix, so always compar
   all tags.
 - **Verification before replacement**: candidate must be strictly smaller and pass the format's
   own check. Images: decode with `CGImageSourceGetStatus == .statusComplete` (a truncated file
-  still yields a partial image otherwise) and match the original's dimensions. PDFs: same page
-  count **and same embedded-image count**.
+  still yields a partial image otherwise), match the original's dimensions, **and contain the
+  same pixels**. PDFs: same page count **and same embedded-image count**.
+- **A verifier's job is to catch a tool that destroys content — dimensions and page counts do
+  not.** `pngquant` yields an 83%-smaller PNG at identical dimensions with 13% of pixels
+  changed; Ghostscript yields a 96%-smaller PDF with all pages and zero images. Both ship inside
+  the ImageOptim bundle or Homebrew, one registry entry away. Sift promises lossless
+  optimization, so the verifier enforces it rather than trusting the tool choice. Any new
+  `FileOptimizer` needs a check that would fail its format's *lossy* tool, not merely a
+  corrupted file.
 - **The PDF image-count check is load-bearing, and it must recurse into Form XObjects.**
   Ghostscript deletes all embedded images while preserving every page — a 96% "saving" that a
   page-count-only check waves through. And real PDFs put *zero* images directly in page
@@ -126,6 +133,11 @@ key by concatenation). Entries carry a `\n<colorIndex>` suffix, so always compar
 - **`FileOptimizer.successExitCodes`** exists because qpdf exits 3 on benign warnings while
   writing correct output. Format quirks live in the registry entry, never as a tool-name
   special case inside `OptimizePass`.
+- **Tool discovery must search Homebrew prefixes explicitly** (`defaultToolSearchDirs`).
+  launchd runs the agent with `PATH=/usr/bin:/bin:/usr/sbin:/sbin`, so a Homebrew-only tool is
+  invisible in production while perfectly discoverable from a terminal — the whole suite passes
+  and the feature is silently dead. Images masked this for weeks because ImageOptim.app bundles
+  oxipng, jpegtran, and gifsicle; qpdf had no such fallback.
 - **Marker discipline**: withhold `Sift · Optimized` on tool failure, timeout, and unreadable
   original (a partial download) so those retry; *write* it when the tool simply cannot shrink the
   file so that case never retries. The marker is written regardless of `tagging.enabled` — it is
