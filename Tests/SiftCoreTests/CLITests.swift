@@ -28,6 +28,42 @@ final class CLITests: XCTestCase {
         XCTAssertEqual(runCLI(["--help"]), 0)
     }
 
+    func testParsesOutAndOpenFlags() {
+        let a = parseArgs(["report", "--out", "/tmp/r.html", "--open"])
+        XCTAssertEqual(a.command, "report")
+        XCTAssertEqual(a.outPath, "/tmp/r.html")
+        XCTAssertTrue(a.openAfter)
+    }
+
+    func testReportWritesHTML() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("sift-report-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(
+            at: dir.appendingPathComponent("Desktop"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let json = """
+            {
+              "settings": {
+                "interval": "1h", "log": "\(dir.path)/Logs/sift.log", "dryRun": false,
+                "categories": { "images": ["png"] },
+                "tagging": { "enabled": true, "prefix": "Sift" }
+              },
+              "folders": [
+                { "path": "\(dir.path)/Desktop",
+                  "rules": [ { "name": "r", "match": "all",
+                    "conditions": [ { "attr": "date_added", "op": "older_than", "value": "7d" } ],
+                    "actions": [ { "move": { "to": "\(dir.path)/Review", "sortInto": "none", "onConflict": "rename" } } ] } ] }
+              ]
+            }
+            """
+        let configPath = dir.appendingPathComponent("sift.json").path
+        try json.write(toFile: configPath, atomically: true, encoding: .utf8)
+        let out = dir.appendingPathComponent("report.html").path
+        XCTAssertEqual(runCLI(["report", "--config", configPath, "--out", out]), 0)
+        let html = try String(contentsOfFile: out, encoding: .utf8)
+        XCTAssertTrue(html.contains("</html>"))
+    }
+
     // MARK: - Event log wiring
 
     /// Builds a throwaway config whose log (and therefore event log) lives in a

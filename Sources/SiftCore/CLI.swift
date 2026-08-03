@@ -8,12 +8,27 @@ public struct ParsedArgs: Equatable {
     public let command: String
     public let configPath: String
     public let dryRun: Bool
+    public let outPath: String?
+    public let openAfter: Bool
+
+    public init(
+        command: String, configPath: String, dryRun: Bool, outPath: String? = nil,
+        openAfter: Bool = false
+    ) {
+        self.command = command
+        self.configPath = configPath
+        self.dryRun = dryRun
+        self.outPath = outPath
+        self.openAfter = openAfter
+    }
 }
 
 public func parseArgs(_ argv: [String]) -> ParsedArgs {
     var command = ""
     var configPath = defaultConfigPath()
     var dryRun = false
+    var outPath: String?
+    var openAfter = false
     var i = 0
     while i < argv.count {
         let arg = argv[i]
@@ -23,6 +38,13 @@ public func parseArgs(_ argv: [String]) -> ParsedArgs {
                 configPath = argv[i + 1]
                 i += 1
             }
+        case "--out":
+            if i + 1 < argv.count {
+                outPath = argv[i + 1]
+                i += 1
+            }
+        case "--open":
+            openAfter = true
         case "--dry-run":
             dryRun = true
         case "--help", "-h", "help":
@@ -32,7 +54,9 @@ public func parseArgs(_ argv: [String]) -> ParsedArgs {
         }
         i += 1
     }
-    return ParsedArgs(command: command, configPath: configPath, dryRun: dryRun)
+    return ParsedArgs(
+        command: command, configPath: configPath, dryRun: dryRun, outPath: outPath,
+        openAfter: openAfter)
 }
 
 private func printUsage(to handle: FileHandle) {
@@ -44,6 +68,7 @@ private func printUsage(to handle: FileHandle) {
         Commands:
           run         Perform one scan pass (moves/tags files)
           status      Show what would move and each file's countdown (no changes)
+          report      Write an HTML report of folders, rules, and activity
           install     Install and load the launchd agent
           uninstall   Unload and remove the launchd agent
           help        Show this help
@@ -51,6 +76,9 @@ private func printUsage(to handle: FileHandle) {
         Options:
           --config <path>   Config file (default: ~/.config/sift/sift.json)
           --dry-run         Log actions without changing anything
+          --out <path>      Report output path
+                            (default: ~/Library/Caches/com.brandonshutter.sift/report.html)
+          --open            Open the report when done
 
         """
     handle.write(Data(usage.utf8))
@@ -61,6 +89,7 @@ public func runCLI(_ argv: [String]) -> Int32 {
     switch args.command {
     case "run": return cmdRun(args, statusOnly: false)
     case "status": return cmdRun(args, statusOnly: true)
+    case "report": return cmdReport(args)
     case "install": return cmdInstall(args)
     case "uninstall": return cmdUninstall()
     case "help":
@@ -99,6 +128,37 @@ private func cmdRun(_ args: ParsedArgs, statusOnly: Bool) -> Int32 {
         OptimizePass(config: config, dryRun: dryRun, log: sink, event: eventSink).run()
     }
     Scanner(config: config, now: Date(), dryRun: dryRun, log: sink, event: eventSink).run()
+    return 0
+}
+
+private func cmdReport(_ args: ParsedArgs) -> Int32 {
+    guard let config = loadOrReport(args.configPath) else { return 1 }
+    // A dry-run pass produces `.pending` through the real Scanner, so "due
+    // next" can never drift from what an actual run would do.
+    var pending: [SiftEvent] = []
+    Scanner(
+        config: config, now: Date(), dryRun: true, log: { _ in },
+        event: { if $0.kind == .pending { pending.append($0) } }
+    ).run()
+    let logDir = (standardizePath(config.settings.log) as NSString).deletingLastPathComponent
+    let history = readAllEvents(logDirectory: logDir).filter { $0.kind != .pending }
+    let html = renderReport(
+        ReportData(config: config, pending: pending, history: history), generated: Date())
+
+    let outPath = expandTilde(args.outPath ?? defaultReportPath())
+    let url = URL(fileURLWithPath: outPath)
+    do {
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try html.write(to: url, atomically: true, encoding: .utf8)
+    } catch {
+        FileHandle.standardError.write(Data("report failed: \(error)\n".utf8))
+        return 1
+    }
+    print(outPath)
+    if args.openAfter {
+        _ = runProcess("/usr/bin/open", [outPath], timeout: 10)
+    }
     return 0
 }
 
