@@ -61,6 +61,46 @@ Two deliberate safety behaviors:
 A pinned item never displays a countdown tag; any stale one is cleared the first
 time Sift sees the pin.
 
+## Optimizing images
+
+With an `optimize` block in the config, Sift losslessly shrinks images
+(png/jpg/jpeg/gif) in every folder it watches — including the Review and Delete
+stages — before running the aging pass. Pixels are identical, EXIF and other
+metadata are preserved, and both your Finder tags and the *Date Added* aging
+clock survive optimization.
+
+```json
+"optimize": { "enabled": true, "skipTag": "Keep OG", "level": 2 }
+```
+
+- Tag a file **`Keep OG`** (or `Sift · Keep OG`) and Sift will never touch its
+  bytes. `Keep OG` protects the file's *contents* only — it does not stop aging.
+  Use `Sift · Keep` for that; the two combine fine.
+- Processed files are tagged **`Sift · Optimized`** (green). Remove that tag to
+  make Sift re-optimize a file.
+- `level` is the oxipng effort level (0–6, default 2). Level 4 buys roughly two
+  more percentage points for about 3× the CPU.
+
+Optimizers are external tools located at runtime — `oxipng`, `jpegtran`, and
+`gifsicle`, taken from `$PATH` (Homebrew) or from ImageOptim.app's bundled
+copies. The GUI app is never launched, only its binaries are borrowed. A format
+with no available tool is logged once and skipped; nothing breaks, and installing
+the tool later makes it take effect on the next run.
+
+Sift never rewrites a file in place. Each candidate is optimized to a temporary
+file that must decode cleanly, match the original's dimensions, and be strictly
+smaller before it atomically replaces the original — so a failed or truncated
+optimization leaves your file exactly as it was.
+
+Installing the agent with optimization enabled adds launchd `WatchPaths` for the
+live folders, so a new screenshot or download is optimized within seconds of
+landing rather than waiting for the next hourly pass.
+
+**First run:** every existing unoptimized image is processed once. With a large
+backlog that single pass can take on the order of an hour of background CPU;
+every later pass skips tagged files in milliseconds. To do the heavy pass on your
+own terms, run `sift run` manually once before `sift install`.
+
 ## Build & install
 
 ```bash
@@ -86,6 +126,9 @@ See `sift.example.json`. JSON has no comments, so each field is documented here:
 - `settings.dryRun` — global no-op toggle (also `--dry-run`).
 - `settings.categories` — category → extension list; first match wins, else `Other`.
 - `settings.tagging` — `enabled` and the tag text `prefix`.
+- `settings.optimize` — optional. `enabled`, `skipTag` (default `Keep OG`), and
+  `level` (oxipng effort 0–6, default 2). Omit the block entirely to disable
+  optimization.
 - `folders[]` — `path`, optional `ignore` (names skipped at the top level), and `rules[]`
   (`match` + `conditions` + `actions`). v1 supports the `date_added` /
   `older_than` condition and the `move` action.
