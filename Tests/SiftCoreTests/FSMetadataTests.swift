@@ -22,8 +22,10 @@ final class FSMetadataTests: XCTestCase {
     func testSiftTagReplacesOwnAndPreservesOthers() throws {
         let path = try tempFile()
         defer { try? FileManager.default.removeItem(atPath: path) }
-        try setSiftTag(path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift")
-        try setSiftTag(path, text: "Sift · Delete", color: 6, prefix: "Sift")
+        try setSiftTag(
+            path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift", preserving: { _ in false })
+        try setSiftTag(
+            path, text: "Sift · Delete", color: 6, prefix: "Sift", preserving: { _ in false })
         let tags = rawTags(of: path)
         XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Delete") })
         XCTAssertFalse(tags.contains { $0.hasPrefix("Sift · 3d") })
@@ -32,8 +34,38 @@ final class FSMetadataTests: XCTestCase {
     func testSiftTagNilClears() throws {
         let path = try tempFile()
         defer { try? FileManager.default.removeItem(atPath: path) }
-        try setSiftTag(path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift")
-        try setSiftTag(path, text: nil, color: 0, prefix: "Sift")
+        try setSiftTag(
+            path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift", preserving: { _ in false })
+        try setSiftTag(path, text: nil, color: 0, prefix: "Sift", preserving: { _ in false })
         XCTAssertFalse(rawTags(of: path).contains { $0.hasPrefix("Sift · ") })
+    }
+
+    func testSiftTagPreservesKeepTagWhileReplacingOwn() throws {
+        let path = try tempFile()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let keepPredicate = { isKeepTag($0, prefix: "Sift") }
+        try setSiftTag(
+            path, text: "Sift · Keep until 2026-09-02", color: 6, prefix: "Sift",
+            preserving: keepPredicate)
+        try setSiftTag(
+            path, text: "Sift · 3d → Delete", color: 7, prefix: "Sift", preserving: keepPredicate)
+        let tags = rawTags(of: path)
+        // The pin survives a countdown rewrite; the countdown still lands.
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Keep until 2026-09-02") })
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · 3d → Delete") })
+    }
+
+    func testSiftTagClearReplacesKeepTagWhenNotPreserved() throws {
+        let path = try tempFile()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        try setSiftTag(
+            path, text: "Sift · Keep 30d", color: 6, prefix: "Sift", preserving: { _ in false })
+        // Normalizing a pin rewrites it, so the keep tag must NOT be preserved there.
+        try setSiftTag(
+            path, text: "Sift · Keep until 2026-09-02", color: 6, prefix: "Sift",
+            preserving: { _ in false })
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Keep until 2026-09-02") })
+        XCTAssertFalse(tags.contains { $0.hasPrefix("Sift · Keep 30d") })
     }
 }

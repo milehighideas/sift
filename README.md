@@ -20,6 +20,47 @@ extension (e.g. `.rtfd` → `Documents/`).
 Files in a Review folder carry a Finder tag `Sift · Nd → Delete` (orange) that
 ticks down each run; files in Delete carry `Sift · Delete` (red).
 
+## Keeping something
+
+Apply the Finder tag **`Sift · Keep`** to pin an item. A pinned item never leaves
+its live folder for Review, and never advances from Review to Delete. Remove the
+tag and it resumes aging. This is the per-item counterpart to the `ignore` list in
+the config, which exempts items by filename.
+
+Add a duration or a date to pin it only for a while:
+
+| Tag | Meaning |
+| --- | --- |
+| `Sift · Keep` | Pinned indefinitely. |
+| `Sift · Keep 30d` | Pinned for 30 days. Rewritten to an absolute date on the next run. |
+| `Sift · Keep until 2026-09-02` | Pinned through Sep 2; resumes aging on Sep 3. |
+
+Durations use the same `<n><s\|m\|h\|d>` format as the config. Dates must be ISO
+`YYYY-MM-DD`.
+
+Sift **normalizes a relative pin exactly once**: `Sift · Keep 30d` becomes
+`Sift · Keep until <date>` on the next run, and is never rewritten again. A Finder
+tag carries no timestamp, so without this Sift could not tell when you applied it.
+Expiry is inclusive of the named day, and relative durations round up to the end of
+the day they land in — a pin is never cut short.
+
+When a pin lapses, Sift removes the tag and restarts the item's clock, so it gets a
+full fresh countdown rather than moving the instant the pin expires. An item pinned
+inside a Review folder is therefore visible as `Sift · 7d → Delete` for a week after
+its pin runs out.
+
+Two deliberate safety behaviors:
+
+- **A typo still pins.** If the text after `Keep` doesn't parse (`Sift · Keep 3x`,
+  or a non-ISO date like `Sift · Keep until Sep 2`), Sift logs a warning, pins the
+  item indefinitely, and rewrites the tag to `Sift · Keep` so you can see how it was
+  read. A mistyped tag never causes a file to be moved.
+- **Only the exact word `Keep` counts.** A tag of your own like `Sift · Keepsakes`
+  is not a pin and is left completely alone.
+
+A pinned item never displays a countdown tag; any stale one is cleared the first
+time Sift sees the pin.
+
 ## Build & install
 
 ```bash

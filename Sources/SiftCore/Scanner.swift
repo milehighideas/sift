@@ -56,6 +56,9 @@ public struct Scanner {
         item: URL, rule: Rule, move: MoveAction,
         dest: String, terminalDest: Bool, skipMove: Bool
     ) -> String? {
+        // Resolved before Date Added is read: an expiring pin re-stamps the item,
+        // and reading the old value first would age it on a stale clock.
+        if pinned(item) { return nil }
         guard let added = dateAdded(of: item.path) else { return nil }
         let matched = (try? ruleMatches(rule, dateAdded: added, now: now)) ?? false
         if matched {
@@ -100,7 +103,8 @@ public struct Scanner {
                 do {
                     try setSiftTag(
                         moved.path, text: "\(config.settings.tagging.prefix) · \(word)",
-                        color: 6, prefix: config.settings.tagging.prefix)
+                        color: 6, prefix: config.settings.tagging.prefix,
+                        preserving: keepPredicate)
                 } catch {
                     log("ERROR tag \(moved.path): \(error)")
                 }
@@ -125,10 +129,103 @@ public struct Scanner {
             return
         }
         do {
-            try setSiftTag(item.path, text: text, color: 7, prefix: config.settings.tagging.prefix)
+            try setSiftTag(
+                item.path, text: text, color: 7, prefix: config.settings.tagging.prefix,
+                preserving: keepPredicate)
             log("TAG \(item.path): \(text)")
         } catch {
             log("ERROR tag \(item.path): \(error)")
+        }
+    }
+
+    private var keepPredicate: (String) -> Bool {
+        let prefix = config.settings.tagging.prefix
+        return { isKeepTag($0, prefix: prefix) }
+    }
+
+    /// Resolves an item's keep tag and returns whether it stays put this pass.
+    /// Normalizes a relative or malformed pin to an absolute one, and retires a
+    /// lapsed pin by clearing the tag and re-stamping Date Added — which hands
+    /// the item a full fresh countdown instead of moving it the instant its pin
+    /// expires.
+    private func pinned(_ item: URL) -> Bool {
+        let prefix = config.settings.tagging.prefix
+        let tags = rawTags(of: item.path)
+        guard let tag = parseKeepTag(tags, prefix: prefix, calendar: Calendar.current) else {
+            return false
+        }
+        switch tag {
+        case .malformed(let body):
+            log("WARN unparseable keep tag \"\(body)\" on \(item.path) — pinning indefinitely")
+            writeKeepTag(item, text: keepTagText(prefix: prefix))
+        case .relative:
+            if let expiry = keepExpiry(from: tag, now: now, calendar: Calendar.current) {
+                writeKeepTag(item, text: keepTagText(until: expiry, prefix: prefix))
+            }
+        case .until(let expiry) where now > expiry:
+            return !retirePin(item)
+        case .indefinite, .until:
+            clearStaleCountdown(item, tags: tags)
+        }
+        return true
+    }
+
+    /// Clears a lapsed pin and restarts the item's clock. Returns true on
+    /// success, meaning the caller should let the item age normally from now.
+    private func retirePin(_ item: URL) -> Bool {
+        if dryRun {
+            log("DRY expire \(item.path): keep tag lapsed, resuming aging")
+            return false
+        }
+        do {
+            try setSiftTag(
+                item.path, text: nil, color: 0, prefix: config.settings.tagging.prefix,
+                preserving: { _ in false })
+        } catch {
+            log("ERROR expire \(item.path): \(error)")
+            return false
+        }
+        do { try setDateAdded(item.path, to: now) } catch {
+            log("ERROR stamp \(item.path): \(error)")
+        }
+        log("EXPIRE \(item.path): keep tag lapsed, resuming aging")
+        return true
+    }
+
+    private func writeKeepTag(_ item: URL, text: String) {
+        if dryRun {
+            log("DRY normalize \(item.path): \(text)")
+            return
+        }
+        do {
+            try setSiftTag(
+                item.path, text: text, color: 6, prefix: config.settings.tagging.prefix,
+                preserving: { _ in false })
+            log("KEEP \(item.path): \(text)")
+        } catch {
+            log("ERROR normalize \(item.path): \(error)")
+        }
+    }
+
+    /// A pinned item must never show a countdown it will not honour. Only writes
+    /// when a stale one is actually present, so a settled pin costs no syscalls.
+    private func clearStaleCountdown(_ item: URL, tags: [String]) {
+        let prefix = config.settings.tagging.prefix
+        let stale = tags.contains { entry in
+            let name = entry.components(separatedBy: "\n").first ?? entry
+            return name.hasPrefix(prefix + " · ") && !isKeepTag(entry, prefix: prefix)
+        }
+        guard stale else { return }
+        if dryRun {
+            log("DRY untag \(item.path): pinned, clearing countdown")
+            return
+        }
+        do {
+            try setSiftTag(
+                item.path, text: nil, color: 0, prefix: prefix, preserving: keepPredicate)
+            log("UNTAG \(item.path): pinned, countdown cleared")
+        } catch {
+            log("ERROR untag \(item.path): \(error)")
         }
     }
 

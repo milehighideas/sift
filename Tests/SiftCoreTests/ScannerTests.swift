@@ -147,6 +147,154 @@ final class ScannerTests: XCTestCase {
                     .path))
     }
 
+    // MARK: - Keep pin
+
+    private func pin(_ path: String, _ text: String) throws {
+        try setSiftTag(path, text: text, color: 6, prefix: "Sift", preserving: { _ in false })
+    }
+
+    private func isoDay(offsetDays: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: Date().addingTimeInterval(Double(offsetDays) * 86400))
+    }
+
+    func testPinnedFileStaysInLiveFolder() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Review/Images/old.png").path
+            ))
+    }
+
+    func testPinnedFileDoesNotAdvanceReviewToDelete() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Delete/Images/old.png").path
+            ))
+    }
+
+    func testPinnedFolderStaysIntact() throws {
+        let path = try makeDir("Desktop/myproj", child: "readme.txt", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: path + "/readme.txt"))
+    }
+
+    func testPinnedItemLosesStaleCountdownTag() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 1)
+        try setSiftTag(
+            path, text: "Sift · 6d → Delete", color: 7, prefix: "Sift", preserving: { _ in false })
+        try setSiftTag(
+            path, text: "Sift · Keep", color: 6, prefix: "Sift",
+            preserving: { !isKeepTag($0, prefix: "Sift") })
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Keep") })
+        XCTAssertFalse(tags.contains { $0.contains("→ Delete") })
+    }
+
+    func testRelativePinNormalizesToAbsoluteDateOnce() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep 30d")
+
+        var logs: [String] = []
+        Scanner(config: config(), now: Date(), dryRun: false, log: { logs.append($0) }).run()
+        let expected = "Sift · Keep until \(isoDay(offsetDays: 30))"
+        XCTAssertTrue(rawTags(of: path).contains { $0.hasPrefix(expected) })
+        XCTAssertTrue(logs.contains { $0.hasPrefix("KEEP ") })
+
+        // Already absolute: the second pass must not write again.
+        logs.removeAll()
+        Scanner(config: config(), now: Date(), dryRun: false, log: { logs.append($0) }).run()
+        XCTAssertTrue(rawTags(of: path).contains { $0.hasPrefix(expected) })
+        XCTAssertFalse(logs.contains { $0.hasPrefix("KEEP ") })
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+    }
+
+    func testFuturePinIsHonoured() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep until \(isoDay(offsetDays: 5))")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+    }
+
+    func testMalformedPinStaysAndNormalizesToIndefinite() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep 3x")
+        var logs: [String] = []
+        Scanner(config: config(), now: Date(), dryRun: false, log: { logs.append($0) }).run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Keep\n") || $0 == "Sift · Keep" })
+        XCTAssertFalse(tags.contains { $0.hasPrefix("Sift · Keep 3x") })
+        XCTAssertTrue(logs.contains { $0.hasPrefix("WARN unparseable keep tag") })
+    }
+
+    func testExpiredPinClearsTagRestampsAndDoesNotMoveThatPass() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep until \(isoDay(offsetDays: -2))")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+
+        // Still in Review — the lapse hands it a fresh countdown, not a move.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Delete/Images/old.png").path
+            ))
+        let tags = rawTags(of: path)
+        XCTAssertFalse(tags.contains { $0.hasPrefix("Sift · Keep") })
+        let added = try XCTUnwrap(dateAdded(of: path))
+        XCTAssertLessThan(abs(added.timeIntervalSinceNow), 5)
+    }
+
+    func testExpiredPinGetsFreshCountdownOnNextPass() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep until \(isoDay(offsetDays: -2))")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        XCTAssertTrue(rawTags(of: path).contains { $0.hasPrefix("Sift · 7d → Delete") })
+    }
+
+    func testKeepsakesTagIsNotAPinAndAgesNormally() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keepsakes")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: home.appendingPathComponent("Desktop/Desktop to Review/Images/old.png").path
+            ))
+    }
+
+    func testDryRunLeavesPinTagsAndClockUntouched() throws {
+        let relative = try makeFile("Desktop/a.png", addedDaysAgo: 10)
+        try pin(relative, "Sift · Keep 30d")
+        let expired = try makeFile("Desktop/b.png", addedDaysAgo: 10)
+        try pin(expired, "Sift · Keep until \(isoDay(offsetDays: -2))")
+        let before = try XCTUnwrap(dateAdded(of: expired))
+
+        var logs: [String] = []
+        Scanner(config: config(), now: Date(), dryRun: true, log: { logs.append($0) }).run()
+
+        XCTAssertTrue(rawTags(of: relative).contains { $0.hasPrefix("Sift · Keep 30d") })
+        XCTAssertTrue(rawTags(of: expired).contains { $0.hasPrefix("Sift · Keep until") })
+        let after = try XCTUnwrap(dateAdded(of: expired))
+        XCTAssertEqual(before.timeIntervalSince1970, after.timeIntervalSince1970, accuracy: 1)
+        XCTAssertTrue(logs.contains { $0.hasPrefix("DRY normalize") })
+        XCTAssertTrue(logs.contains { $0.hasPrefix("DRY expire") })
+    }
+
     func testReviewFolderDoesNotDescendIntoUserFolder() throws {
         // A user folder sitting inside a Review category subfolder must be aged
         // as a whole unit, never walked into.

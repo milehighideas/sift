@@ -48,12 +48,20 @@ public func rawTags(of path: String) -> [String] {
     return (list as? [String]) ?? []
 }
 
-public func setSiftTag(_ path: String, text: String?, color: Int, prefix: String) throws {
+/// Replaces Sift's own tag on an item, leaving the user's tags untouched.
+/// `preserving` exempts specific Sift-owned entries from the strip — callers
+/// pass `isKeepTag` so rewriting a countdown does not remove a pin. It has no
+/// default value on purpose: silently defaulting to "preserve nothing" is
+/// exactly how a keep tag would get eaten by a future call site.
+public func setSiftTag(
+    _ path: String, text: String?, color: Int, prefix: String,
+    preserving: (String) -> Bool
+) throws {
     let ownPrefix = prefix + " · "
     var tags = rawTags(of: path).filter { entry in
         // Tag entries may carry a "\n<colorIndex>" suffix; compare on the name.
         let name = entry.components(separatedBy: "\n").first ?? entry
-        return !name.hasPrefix(ownPrefix)
+        return !name.hasPrefix(ownPrefix) || preserving(entry)
     }
     if let text = text {
         tags.append("\(text)\n\(color)")
