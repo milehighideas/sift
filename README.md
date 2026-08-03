@@ -178,11 +178,37 @@ everything else normally.
 - `sift run [--config <path>] [--dry-run]` — one pass: optimize first, then age.
 - `sift status` — show what would be optimized, what would move, and each file's
   countdown. Read-only; never writes bytes or tags.
+- `sift report [--out <path>] [--open]` — write a self-contained HTML page
+  showing watched folders, rules, what's due next, and recent activity.
 - `sift install` / `sift uninstall` — manage the launchd agent.
 
 The agent runs on `settings.interval` and, when optimization is enabled, also
 whenever something lands in a live folder (launchd `WatchPaths`), so new
 screenshots and downloads are handled within seconds.
+
+## Reports
+
+`sift report` writes a single self-contained HTML file — no external assets, no
+scripts, readable offline — summarising what Sift is doing:
+
+```bash
+sift report --open
+```
+
+It shows totals (files optimized, bytes reclaimed, items moved), what's due to
+move next, recent activity, your watched folders and rules, and your settings.
+The default output is `~/Library/Caches/com.brandonshutter.sift/report.html`;
+`--out` overrides it. Regenerate to refresh — the page is a snapshot.
+
+The "due next" list is produced by a dry run of the real aging pass, so it can
+never disagree with what an actual run would do.
+
+Activity comes from a structured event log at `~/Library/Logs/Sift/events.jsonl`,
+written on every real run and never on `--dry-run` or `sift status`. It records
+only real state changes — moves, optimizations, and pin normalizations or
+expiries — not the countdown tag rewrites that happen every pass. It rotates
+through the same 7-day rule as `sift.log`, and reports read the archives too, so
+history survives rotation.
 
 ## Config
 

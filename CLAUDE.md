@@ -134,6 +134,25 @@ key by concatenation). Entries carry a `\n<colorIndex>` suffix, so always compar
   independent offsets — they interleave and truncate each other (5,592 corrupted lines before this
   was caught).
 
+### Events & reporting
+
+- **The event log records actions, never churn.** `Events` captures `move`, `optimize`,
+  `pinNormalize`, and `pinExpire` only. Countdown-tag rewrites are excluded on purpose — they were
+  6,216 of 11,473 lines in the production log and would drown real activity in any history view.
+- **`.pending` is dry-run-only and never written to disk.** `CLI.cmdRun` wires the `EventLog`
+  appender only when not dry-running; that is what keeps `sift status` and `--dry-run`
+  byte-for-byte read-only.
+- **`.pending` is emitted from `Scanner.process`, not `tagCountdown`.** The latter runs only for
+  terminal destinations, so wiring it there silently omits every live-folder item counting down
+  toward Review — exactly the rows a "due next" view needs.
+- **The `event:` sinks have a no-op default; `setSiftTag(preserving:)` does not.** The asymmetry is
+  deliberate: a missing event sink loses a history row, a wrong `preserving:` closure destroys a
+  user's tag. Do not "fix" the inconsistency.
+- **The report is written to Caches, not Logs.** The Logs directory is watched, so a report written
+  there would be aged into `Archive/`.
+- **`renderReport` is pure** — no filesystem access, so the whole page is unit-testable, and every
+  interpolated path goes through `esc()` because filenames legitimately contain `&`, `<`, and `"`.
+
 ## Module map (`Sources/SiftCore/`)
 
 **Aging:** `Scanner` (the pass, move orchestration, double-hop guard, keep resolution) ·
@@ -145,7 +164,8 @@ registry, tool discovery, image verify) · `Shell` (subprocess + timeout)
 
 **Plumbing:** `CLI` (arg parse/dispatch) · `Config` (load, `validate`, `standardizePath`) ·
 `Duration` (parse) · `FSMetadata` (Date Added, tags, xattr capture/restore) ·
-`Launchd` (agent `com.brandonshutter.sift`, plist, `watchPaths`) · `Logger`
+`Launchd` (agent `com.brandonshutter.sift`, plist, `watchPaths`) · `Logger` ·
+`Events` (JSONL event log) · `Report` (HTML rendering)
 
 One test file per source file. Subprocess behavior is tested with **stub shell scripts** written by
 the test, so the suite passes on machines without the optimizer tools; real-tool tests gate on
