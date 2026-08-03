@@ -331,7 +331,7 @@ final class OptimizePassTests: XCTestCase {
         let before = size(file)
         OptimizePass(
             config: config(), dryRun: false, log: { _ in },
-            optimizers: imageOptimizers, toolPaths: ["png": oxipng!], timeout: 120
+            optimizers: defaultOptimizers, toolPaths: ["png": oxipng!], timeout: 120
         ).run()
         XCTAssertLessThanOrEqual(size(file), before)
         XCTAssertTrue(isMarked(file))

@@ -26,7 +26,7 @@ public struct OptimizePass {
     public init(
         config: Config, dryRun: Bool, log: @escaping (String) -> Void,
         event: @escaping (SiftEvent) -> Void = { _ in },
-        optimizers: [FileOptimizer] = imageOptimizers,
+        optimizers: [FileOptimizer] = defaultOptimizers,
         toolPaths: [String: String]? = nil,
         timeout: TimeInterval = 120
     ) {
@@ -158,7 +158,9 @@ public struct OptimizePass {
             log("ERROR optimize timeout \(file.path)")
             return
         }
-        guard result.status == 0, FileManager.default.fileExists(atPath: temp.path) else {
+        guard optimizer.successExitCodes.contains(result.status),
+            FileManager.default.fileExists(atPath: temp.path)
+        else {
             log("ERROR optimize \(file.path): tool exited \(result.status)")
             return
         }
