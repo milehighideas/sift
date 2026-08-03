@@ -119,15 +119,60 @@ public func findTool(named name: String, searchDirs: [String]) -> String? {
     return nil
 }
 
-/// Both files must decode completely and agree on pixel dimensions.
-/// `statusComplete` is the load-bearing part: ImageIO happily returns a partial
-/// image for a truncated file, which is exactly the half-written-download case.
+/// Both files must decode completely, agree on pixel dimensions, and contain
+/// the same pixels.
+///
+/// `statusComplete` is load-bearing: ImageIO happily returns a partial image
+/// for a truncated file, which is exactly the half-written-download case.
+///
+/// The pixel comparison is equally load-bearing. Dimensions alone cannot tell a
+/// lossless optimizer from a lossy one — `pngquant` produces an 83%-smaller PNG
+/// at identical dimensions with 13% of pixels changed, and it ships inside the
+/// ImageOptim bundle this file already searches. Sift promises lossless
+/// optimization; this is what enforces it, rather than trusting whoever adds
+/// the next registry entry to have picked a lossless tool.
 public func verifyImage(original: URL, candidate: URL) -> VerifyResult {
     guard let source = decodeComplete(original) else { return .originalUnreadable }
     guard let result = decodeComplete(candidate),
-        result.width == source.width, result.height == source.height
+        result.width == source.width, result.height == source.height,
+        pixelsMatch(source, result)
     else { return .candidateInvalid }
     return .ok
+}
+
+/// Above this, both images are compared at a proportionally reduced size. An
+/// exact compare of a pair of 50-megapixel images would transiently hold about
+/// 800 MB in a background agent; any degradation worth rejecting survives the
+/// reduction easily.
+private let maxExactComparePixels = 24_000_000
+
+private func pixelsMatch(_ a: CGImage, _ b: CGImage) -> Bool {
+    var width = a.width
+    var height = a.height
+    if width * height > maxExactComparePixels {
+        let scale = (Double(maxExactComparePixels) / Double(width * height)).squareRoot()
+        width = max(Int(Double(width) * scale), 1)
+        height = max(Int(Double(height) * scale), 1)
+    }
+    guard let left = rasterize(a, width: width, height: height),
+        let right = rasterize(b, width: width, height: height)
+    else { return false }
+    return left == right
+}
+
+private func rasterize(_ image: CGImage, width: Int, height: Int) -> [UInt8]? {
+    var buffer = [UInt8](repeating: 0, count: width * height * 4)
+    let ok = buffer.withUnsafeMutableBytes { raw -> Bool in
+        guard
+            let ctx = CGContext(
+                data: raw.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return false }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return true
+    }
+    return ok ? buffer : nil
 }
 
 /// Page count alone is not enough. Ghostscript, measured on a real 203-page

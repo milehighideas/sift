@@ -170,6 +170,65 @@ final class OptimizeTests: XCTestCase {
         XCTAssertEqual(verifyImage(original: a, candidate: b), .candidateInvalid)
     }
 
+    /// Dimensions alone cannot distinguish a lossless optimizer from a lossy
+    /// one. `pngquant` and `guetzli` sit in the ImageOptim bundle Sift already
+    /// searches, one registry entry away — the same structural hole that let a
+    /// page-count-only check wave through a PDF with every image deleted.
+    func testVerifyRejectsLossyReencodeAtIdenticalDimensions() throws {
+        let a = dir.appendingPathComponent("a.png")
+        let b = dir.appendingPathComponent("b.png")
+        // Same size, different content: a lossy re-encode looks like this.
+        try Self.writePNG(to: a, width: 64, height: 64)
+        let ctx = CGContext(
+            data: nil, width: 64, height: 64, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.9, green: 0.05, blue: 0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 64))
+        let dest = CGImageDestinationCreateWithURL(b as CFURL, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        XCTAssertEqual(verifyImage(original: a, candidate: b), .candidateInvalid)
+    }
+
+    /// The real adversary: pngquant produces an 83%-smaller PNG with identical
+    /// dimensions and 13% of pixels changed.
+    func testVerifyRejectsRealPngquantOutput() throws {
+        let pngquant = findTool(named: "pngquant", searchDirs: defaultToolSearchDirs())
+        try XCTSkipIf(pngquant == nil, "pngquant not installed")
+        let source = dir.appendingPathComponent("src.png")
+        let lossy = dir.appendingPathComponent("lossy.png")
+        // Needs enough colour variation for quantisation to actually change it.
+        let ctx = CGContext(
+            data: nil, width: 128, height: 128, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        for x in 0..<128 {
+            for y in 0..<128 {
+                ctx.setFillColor(
+                    CGColor(
+                        red: Double(x) / 128, green: Double(y) / 128,
+                        blue: Double((x * y) % 128) / 128, alpha: 1))
+                ctx.fill(CGRect(x: x, y: y, width: 1, height: 1))
+            }
+        }
+        let dest = CGImageDestinationCreateWithURL(
+            source as CFURL, "public.png" as CFString, 1, nil)!
+        CGImageDestinationAddImage(dest, ctx.makeImage()!, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        // No --quality bound: pngquant exits 99 rather than writing output when
+        // it cannot meet one, which would skip the test instead of running it.
+        // Plain 256-colour quantisation of a gradient is lossy regardless.
+        let run = runProcess(
+            pngquant!, ["--force", "--output", lossy.path, source.path], timeout: 60)
+        try XCTSkipIf(
+            run.status != 0 || !FileManager.default.fileExists(atPath: lossy.path),
+            "pngquant declined this fixture")
+        XCTAssertEqual(verifyImage(original: source, candidate: lossy), .candidateInvalid)
+    }
+
     func testVerifyFlagsUnreadableOriginal() throws {
         let a = dir.appendingPathComponent("a.png")
         try Data("not an image".utf8).write(to: a)
