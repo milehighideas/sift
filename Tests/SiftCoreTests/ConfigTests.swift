@@ -63,6 +63,41 @@ final class ConfigTests: XCTestCase {
         }
     }
 
+    // MARK: - optimize block
+
+    /// The deployed config predates this feature and has no optimize block; it
+    /// must keep decoding and validating untouched.
+    func testConfigWithoutOptimizeBlockDecodesAndValidates() throws {
+        let config = try loadConfig(at: writeTemp(valid))
+        XCTAssertNil(config.settings.optimize)
+    }
+
+    func testOptimizeBlockDecodes() throws {
+        let withOpt = valid.replacingOccurrences(
+            of: "\"tagging\":",
+            with: "\"optimize\": { \"enabled\": true, \"skipTag\": \"Keep OG\", \"level\": 2 },\n"
+                + "    \"tagging\":")
+        let config = try loadConfig(at: writeTemp(withOpt))
+        let opt = try XCTUnwrap(config.settings.optimize)
+        XCTAssertTrue(opt.enabled)
+        XCTAssertEqual(opt.skipTag, "Keep OG")
+        XCTAssertEqual(opt.level, 2)
+    }
+
+    func testOptimizeRejectsBadLevel() throws {
+        let bad = valid.replacingOccurrences(
+            of: "\"tagging\":",
+            with: "\"optimize\": { \"enabled\": true, \"level\": 9 },\n    \"tagging\":")
+        XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
+    }
+
+    func testOptimizeRejectsEmptySkipTag() throws {
+        let bad = valid.replacingOccurrences(
+            of: "\"tagging\":",
+            with: "\"optimize\": { \"enabled\": true, \"skipTag\": \"\" },\n    \"tagging\":")
+        XCTAssertThrowsError(try loadConfig(at: writeTemp(bad)))
+    }
+
     // MARK: - standardizePath
 
     /// The property the whole scan depends on: the same config string must

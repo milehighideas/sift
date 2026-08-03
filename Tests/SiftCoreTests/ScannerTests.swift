@@ -47,7 +47,7 @@ final class ScannerTests: XCTestCase {
         let settings = Settings(
             interval: "1h", log: root.appendingPathComponent("sift.log").path,
             dryRun: false, categories: ["images": ["png"], "documents": ["rtfd", "txt", "pdf"]],
-            tagging: Tagging(enabled: true, prefix: "Sift"))
+            tagging: Tagging(enabled: true, prefix: "Sift"), optimize: nil)
         return Config(settings: settings, folders: [live, reviewFolder])
     }
 

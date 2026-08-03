@@ -11,6 +11,9 @@ public struct Settings: Codable {
     public let dryRun: Bool
     public let categories: [String: [String]]
     public let tagging: Tagging
+    /// Optional: an absent block means the optimize pass is off. Must stay
+    /// optional so configs written before the feature keep decoding.
+    public let optimize: OptimizeSettings?
 }
 
 public struct Tagging: Codable {
@@ -107,6 +110,15 @@ public func loadConfig(at path: String) throws -> Config {
 func validate(_ c: Config) throws {
     do { _ = try parseDuration(c.settings.interval) } catch {
         throw ConfigError.validation("bad settings.interval: \(c.settings.interval)")
+    }
+
+    if let optimize = c.settings.optimize {
+        guard (0...6).contains(optimize.level) else {
+            throw ConfigError.validation("bad optimize.level: \(optimize.level) (expected 0-6)")
+        }
+        guard !optimize.skipTag.isEmpty else {
+            throw ConfigError.validation("optimize.skipTag must not be empty")
+        }
     }
 
     for folder in c.folders {

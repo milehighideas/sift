@@ -12,7 +12,8 @@
       "video":      ["mp4","mov","m4v","avi","mkv","webm","wmv"],
       "code":       ["js","ts","jsx","tsx","go","py","rb","rs","java","c","h","cpp","sh","json","yaml","yml","html","css","sql"]
     },
-    "tagging": { "enabled": true, "prefix": "Sift" }
+    "tagging": { "enabled": true, "prefix": "Sift" },
+    "optimize": { "enabled": true, "skipTag": "Keep OG", "level": 2 }
   },
   "folders": [
     {
