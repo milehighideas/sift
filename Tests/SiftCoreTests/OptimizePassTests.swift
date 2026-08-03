@@ -268,6 +268,58 @@ final class OptimizePassTests: XCTestCase {
         XCTAssertEqual(logs.filter { $0.hasPrefix("SKIP no optimizer") }.count, 1)
     }
 
+    // MARK: - Events
+
+    private func collectOptimizeEvents(
+        tool: String, dryRun: Bool = false,
+        verify: @escaping (URL, URL) -> VerifyResult = { _, _ in .ok }
+    ) -> [SiftEvent] {
+        var events: [SiftEvent] = []
+        OptimizePass(
+            config: config(), dryRun: dryRun, log: { _ in }, event: { events.append($0) },
+            optimizers: [stubOptimizer(verify: verify)], toolPaths: ["stub": tool],
+            timeout: 120
+        ).run()
+        return events
+    }
+
+    func testSuccessfulOptimizeEmitsEventWithByteCounts() throws {
+        let file = try makeFile("Desktop/a.png")
+        let events = collectOptimizeEvents(tool: try writeTool(shrinkScript))
+        XCTAssertEqual(events.count, 1)
+        XCTAssertEqual(events[0].kind, .optimize)
+        // Compare resolved paths: directory enumeration hands back
+        // /private/var/... for a /var/... temp dir. Same file either way, and
+        // real config paths (~/Desktop) contain no symlink to resolve.
+        XCTAssertEqual(
+            URL(fileURLWithPath: events[0].path).resolvingSymlinksInPath().path,
+            URL(fileURLWithPath: file.path).resolvingSymlinksInPath().path)
+        XCTAssertEqual(events[0].before, 4096)
+        XCTAssertEqual(events[0].after, 2048)
+    }
+
+    func testFailedOptimizeEmitsNothing() throws {
+        try makeFile("Desktop/a.png")
+        XCTAssertTrue(collectOptimizeEvents(tool: try writeTool(failScript)).isEmpty)
+    }
+
+    func testNotSmallerEmitsNothing() throws {
+        try makeFile("Desktop/a.png")
+        XCTAssertTrue(collectOptimizeEvents(tool: try writeTool(growScript)).isEmpty)
+    }
+
+    func testSkippedFileEmitsNothing() throws {
+        let file = try makeFile("Desktop/a.png")
+        try addSiftTag(file.path, text: "Keep OG", color: 3)
+        XCTAssertTrue(collectOptimizeEvents(tool: try writeTool(shrinkScript)).isEmpty)
+    }
+
+    func testDryRunEmitsNothing() throws {
+        try makeFile("Desktop/a.png")
+        XCTAssertTrue(
+            collectOptimizeEvents(tool: try writeTool(shrinkScript), dryRun: true).isEmpty)
+    }
+
     // MARK: - Integration with the real tool
 
     func testRealOxipngRoundTrip() throws {

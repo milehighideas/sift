@@ -14,6 +14,9 @@ public struct OptimizePass {
     let config: Config
     let dryRun: Bool
     let log: (String) -> Void
+    /// Structured history sink; see the note on `Scanner.event` for why a
+    /// no-op default is safe here but not on `setSiftTag(preserving:)`.
+    let event: (SiftEvent) -> Void
     let settings: OptimizeSettings
     let resolver: CategoryResolver
     let optimizers: [FileOptimizer]
@@ -22,6 +25,7 @@ public struct OptimizePass {
 
     public init(
         config: Config, dryRun: Bool, log: @escaping (String) -> Void,
+        event: @escaping (SiftEvent) -> Void = { _ in },
         optimizers: [FileOptimizer] = imageOptimizers,
         toolPaths: [String: String]? = nil,
         timeout: TimeInterval = 120
@@ -29,6 +33,7 @@ public struct OptimizePass {
         self.config = config
         self.dryRun = dryRun
         self.log = log
+        self.event = event
         self.settings = config.settings.optimize ?? OptimizeSettings(enabled: false)
         self.resolver = CategoryResolver(map: config.settings.categories)
         self.optimizers = optimizers
@@ -189,6 +194,11 @@ public struct OptimizePass {
         mark(file, prefix: prefix)
         let saved = (originalSize - newSize) * 100 / max(originalSize, 1)
         log("OPT \(file.path): \(originalSize) -> \(newSize) bytes (\(saved)%)")
+        // Only this branch replaced the file: a marked not-smaller file and
+        // every failure path stay out of the history.
+        event(
+            SiftEvent.make(
+                kind: .optimize, path: file.path, before: originalSize, after: newSize))
     }
 
     private func mark(_ file: URL, prefix: String) {
