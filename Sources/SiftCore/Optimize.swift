@@ -93,14 +93,22 @@ public let defaultOptimizers: [FileOptimizer] = [
 public let imageOptimResourcesDir =
     "/Applications/ImageOptim.app/Contents/Frameworks/ImageOptimGPL.framework/Versions/A/Resources"
 
-/// $PATH first, then the CLI binaries ImageOptim.app ships in its bundle. The
-/// GUI app is never launched — only its optimizers are borrowed, so the feature
-/// keeps working whether the user has Homebrew tools, the app, or both.
+/// Homebrew prefixes, searched explicitly because launchd does not inherit the
+/// user's shell PATH — the agent runs with `/usr/bin:/bin:/usr/sbin:/sbin`.
+/// Without these, any tool installed only via Homebrew is invisible to the
+/// deployed agent while remaining perfectly discoverable from a terminal, so
+/// the failure never shows up in testing.
+public let homebrewToolDirs = ["/opt/homebrew/bin", "/usr/local/bin"]
+
+/// $PATH first (an explicit user setting wins), then Homebrew, then the CLI
+/// binaries ImageOptim.app ships in its bundle. The GUI app is never launched —
+/// only its optimizers are borrowed, so the feature keeps working whether the
+/// user has Homebrew tools, the app, or both.
 public func defaultToolSearchDirs(
     environment: [String: String] = ProcessInfo.processInfo.environment
 ) -> [String] {
     let pathDirs = (environment["PATH"] ?? "").split(separator: ":").map(String.init)
-    return pathDirs + [imageOptimResourcesDir]
+    return pathDirs + homebrewToolDirs + [imageOptimResourcesDir]
 }
 
 public func findTool(named name: String, searchDirs: [String]) -> String? {

@@ -125,9 +125,22 @@ final class OptimizeTests: XCTestCase {
         XCTAssertNil(findTool(named: "no-such-tool-xyz", searchDirs: [dir.path]))
     }
 
-    func testDefaultSearchDirsSplitsPathAndAppendsImageOptim() {
+    func testDefaultSearchDirsSplitsPathAndAppendsFallbacks() {
         let dirs = defaultToolSearchDirs(environment: ["PATH": "/usr/bin:/opt/x/bin"])
-        XCTAssertEqual(dirs, ["/usr/bin", "/opt/x/bin", imageOptimResourcesDir])
+        XCTAssertEqual(
+            dirs, ["/usr/bin", "/opt/x/bin"] + homebrewToolDirs + [imageOptimResourcesDir])
+    }
+
+    /// launchd hands the agent PATH=/usr/bin:/bin:/usr/sbin:/sbin — no Homebrew.
+    /// Images survived that only because ImageOptim.app bundles oxipng, jpegtran,
+    /// and gifsicle; qpdf has no such fallback, so without an explicit Homebrew
+    /// entry PDF optimization is dead in the deployed agent while every test
+    /// still passes from a terminal.
+    func testSearchDirsIncludeHomebrewForLaunchdMinimalPath() {
+        let dirs = defaultToolSearchDirs(
+            environment: ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin"])
+        XCTAssertTrue(dirs.contains("/opt/homebrew/bin"), "Apple Silicon Homebrew prefix")
+        XCTAssertTrue(dirs.contains("/usr/local/bin"), "Intel Homebrew prefix")
     }
 
     // MARK: - Image verify
