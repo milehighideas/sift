@@ -62,4 +62,43 @@ final class ConfigTests: XCTestCase {
             XCTAssertEqual($0 as? ConfigError, .unreadable("/no/such/sift.json"))
         }
     }
+
+    // MARK: - standardizePath
+
+    /// The property the whole scan depends on: the same config string must
+    /// normalize identically whether or not the path exists yet. Sift creates
+    /// its destination folders mid-run, so an existence-sensitive normalizer
+    /// silently changes a folder's identity partway through a pass.
+    func testStandardizeIsIndependentOfExistence() throws {
+        let path = "/private/tmp/sift-exists-\(UUID().uuidString)/Desktop to Review"
+        let before = standardizePath(path)
+        try FileManager.default.createDirectory(
+            atPath: path, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(
+                atPath: (path as NSString).deletingLastPathComponent)
+        }
+        XCTAssertEqual(before, standardizePath(path))
+    }
+
+    func testStandardizeDoesNotResolveSymlinks() {
+        // /tmp is a symlink to /private/tmp; both spellings must survive as written.
+        XCTAssertEqual(standardizePath("/private/tmp/x"), "/private/tmp/x")
+        XCTAssertEqual(standardizePath("/tmp/x"), "/tmp/x")
+    }
+
+    func testStandardizeResolvesDotSegmentsAndSeparators() {
+        XCTAssertEqual(standardizePath("/a/b/../c"), "/a/c")
+        XCTAssertEqual(standardizePath("/a/./b"), "/a/b")
+        XCTAssertEqual(standardizePath("/a//b/"), "/a/b")
+        XCTAssertEqual(standardizePath("/a/b/.."), "/a")
+        XCTAssertEqual(standardizePath("/"), "/")
+        XCTAssertEqual(standardizePath("/.."), "/")
+    }
+
+    func testStandardizeExpandsTilde() {
+        let home = NSHomeDirectory()
+        XCTAssertEqual(standardizePath("~/Desktop"), home + "/Desktop")
+        XCTAssertEqual(standardizePath("~/Desktop/../Downloads"), home + "/Downloads")
+    }
 }

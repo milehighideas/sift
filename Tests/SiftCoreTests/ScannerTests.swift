@@ -15,10 +15,11 @@ final class ScannerTests: XCTestCase {
         try? FileManager.default.removeItem(at: home)
     }
 
-    private func config() -> Config {
-        let desktop = home.appendingPathComponent("Desktop").path
-        let review = home.appendingPathComponent("Desktop/Desktop to Review").path
-        let delete = home.appendingPathComponent("Desktop/Desktop to Delete").path
+    private func config(base: URL? = nil) -> Config {
+        let root = base ?? home!
+        let desktop = root.appendingPathComponent("Desktop").path
+        let review = root.appendingPathComponent("Desktop/Desktop to Review").path
+        let delete = root.appendingPathComponent("Desktop/Desktop to Delete").path
         let cond = Condition(attr: "date_added", op: "older_than", value: "7d")
         let live = FolderConfig(
             path: desktop,
@@ -44,7 +45,7 @@ final class ScannerTests: XCTestCase {
                     ])
             ])
         let settings = Settings(
-            interval: "1h", log: home.appendingPathComponent("sift.log").path,
+            interval: "1h", log: root.appendingPathComponent("sift.log").path,
             dryRun: false, categories: ["images": ["png"], "documents": ["rtfd", "txt", "pdf"]],
             tagging: Tagging(enabled: true, prefix: "Sift"))
         return Config(settings: settings, folders: [live, reviewFolder])
@@ -145,6 +146,34 @@ final class ScannerTests: XCTestCase {
             FileManager.default.fileExists(
                 atPath: home.appendingPathComponent("Desktop/Desktop to Review/Documents/TXT.rtf")
                     .path))
+    }
+
+    // MARK: - Path normalization regression
+
+    /// `NSString.standardizingPath` resolves symlinks — including stripping a
+    /// `/private` prefix — but only for paths that already exist. A `/private/…`
+    /// config path therefore normalized one way while the destination folder was
+    /// missing and another way once Sift created it mid-run, so the Review stage
+    /// stopped recognizing its own destination. The category folder was aged as
+    /// an item and the files inside it were never seen.
+    func testReviewDescentSurvivesCategoryFolderCreatedThisRun() throws {
+        let root = URL(fileURLWithPath: "/private/tmp/sift-private-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let desktop = root.appendingPathComponent("Desktop")
+        try FileManager.default.createDirectory(at: desktop, withIntermediateDirectories: true)
+        let file = desktop.appendingPathComponent("old.png")
+        try "x".write(to: file, atomically: true, encoding: .utf8)
+        try setDateAdded(file.path, to: Date().addingTimeInterval(-10 * 86400))
+
+        Scanner(config: config(base: root), now: Date(), dryRun: false, log: { _ in }).run()
+
+        // The file lands in the category folder and gets the countdown itself.
+        let moved = desktop.appendingPathComponent("Desktop to Review/Images/old.png")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved.path))
+        XCTAssertTrue(rawTags(of: moved.path).contains { $0.hasPrefix("Sift · 7d → Delete") })
+        // The category folder is Sift's own scaffolding — never an aged item.
+        let category = desktop.appendingPathComponent("Desktop to Review/Images")
+        XCTAssertFalse(rawTags(of: category.path).contains { $0.hasPrefix("Sift · ") })
     }
 
     // MARK: - Keep pin

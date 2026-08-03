@@ -16,7 +16,7 @@ public struct Scanner {
     }
 
     public func run() {
-        let watched = Set(config.folders.map { standardized($0.path) })
+        let watched = Set(config.folders.map { standardizePath($0.path) })
         // A folder is a Review stage if it is itself the move destination of some
         // other folder (i.e. Sift populated it with category subfolders). Those
         // are the only folders we descend into one level; everything else is
@@ -27,9 +27,9 @@ public struct Scanner {
             guard let rule = folder.rules.first, let move = rule.actions.first?.move else {
                 continue
             }
-            let dest = standardized(move.to)
+            let dest = standardizePath(move.to)
             let terminalDest = !watched.contains(dest)
-            let reviewStage = destinations.contains(standardized(folder.path))
+            let reviewStage = destinations.contains(standardizePath(folder.path))
             for item in enumerateItems(folder, reviewStage: reviewStage) {
                 let moved = process(
                     item: item, rule: rule, move: move,
@@ -45,7 +45,7 @@ public struct Scanner {
         for folder in config.folders {
             for rule in folder.rules {
                 for action in rule.actions {
-                    dests.insert(standardized(action.move.to))
+                    dests.insert(standardizePath(action.move.to))
                 }
             }
         }
@@ -235,7 +235,7 @@ public struct Scanner {
     /// Sift itself created are transparent: their direct children are the items
     /// to age. Everything else is returned as-is.
     private func enumerateItems(_ folder: FolderConfig, reviewStage: Bool) -> [URL] {
-        let base = URL(fileURLWithPath: standardized(folder.path))
+        let base = URL(fileURLWithPath: standardizePath(folder.path))
         let ignore = Set(folder.ignore ?? [])
         guard let top = listDir(base, logPath: folder.path) else { return [] }
         let categoryNames = resolver.categoryFolderNames()
@@ -270,10 +270,6 @@ public struct Scanner {
 
     private func isDirectory(_ url: URL) -> Bool {
         (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-    }
-
-    private func standardized(_ path: String) -> String {
-        (expandTilde(path) as NSString).standardizingPath
     }
 
     private func lastWord(_ path: String) -> String {

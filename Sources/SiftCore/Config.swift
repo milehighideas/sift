@@ -57,6 +57,40 @@ public func expandTilde(_ path: String) -> String {
     (path as NSString).expandingTildeInPath
 }
 
+/// Normalizes a config path lexically: expands `~`, resolves `.` and `..`
+/// segments, and collapses redundant separators.
+///
+/// Deliberately does **not** touch the filesystem. `NSString.standardizingPath`
+/// resolves symlinks — including stripping a `/private` prefix — but only for
+/// paths that already exist. Sift creates its own destination folders mid-pass,
+/// so an existence-sensitive normalizer changes a folder's identity partway
+/// through a run: the Review stage stops recognizing the destination it was
+/// just handed, and the double-hop guard stops matching the paths it recorded.
+/// Comparisons here are all between config-derived strings, so resolving
+/// symlinks buys nothing and costs correctness.
+public func standardizePath(_ path: String) -> String {
+    let expanded = expandTilde(path)
+    let isAbsolute = expanded.hasPrefix("/")
+    var parts: [String] = []
+    for segment in expanded.split(separator: "/") {
+        switch segment {
+        case ".":
+            continue
+        case "..":
+            if let last = parts.last, last != ".." {
+                parts.removeLast()
+            } else if !isAbsolute {
+                parts.append("..")
+            }
+        default:
+            parts.append(String(segment))
+        }
+    }
+    let joined = parts.joined(separator: "/")
+    if isAbsolute { return "/" + joined }
+    return joined.isEmpty ? "." : joined
+}
+
 public func loadConfig(at path: String) throws -> Config {
     let url = URL(fileURLWithPath: expandTilde(path))
     guard let data = try? Data(contentsOf: url) else { throw ConfigError.unreadable(path) }
