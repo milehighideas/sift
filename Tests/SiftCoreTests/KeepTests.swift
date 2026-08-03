@@ -143,6 +143,54 @@ final class KeepTests: XCTestCase {
         XCTAssertNil(keepExpiry(from: .malformed("3x"), now: date(2026, 8, 3), calendar: cal))
     }
 
+    // MARK: - Keep OG carve-out
+
+    func testKeepOGIsNotAPin() {
+        XCTAssertNil(parseKeepTag(["Sift · Keep OG"], prefix: "Sift", calendar: cal))
+        XCTAssertNil(parseKeepTag(["Sift · Keep OG\n6"], prefix: "Sift", calendar: cal))
+    }
+
+    func testKeepOGEntryIsSkippedButRealPinStillFound() {
+        let tags = ["Sift · Keep OG", "Sift · Keep 30d"]
+        XCTAssertEqual(
+            parseKeepTag(tags, prefix: "Sift", calendar: cal), .relative(30 * 86400))
+    }
+
+    func testIsKeepOGTagMatrix() {
+        XCTAssertTrue(isKeepOGTag("Keep OG", prefix: "Sift", skipTag: "Keep OG"))
+        XCTAssertTrue(isKeepOGTag("Keep OG\n3", prefix: "Sift", skipTag: "Keep OG"))
+        XCTAssertTrue(isKeepOGTag("Sift · Keep OG", prefix: "Sift", skipTag: "Keep OG"))
+        XCTAssertTrue(isKeepOGTag("Original", prefix: "Sift", skipTag: "Original"))
+        XCTAssertFalse(isKeepOGTag("Keep OG extra", prefix: "Sift", skipTag: "Keep OG"))
+        XCTAssertFalse(isKeepOGTag("Sift · Keep", prefix: "Sift", skipTag: "Keep OG"))
+        XCTAssertFalse(isKeepOGTag("Sift · Keepsakes", prefix: "Sift", skipTag: "Keep OG"))
+    }
+
+    func testKeepOGStillCountsAsKeepTagForPreservation() {
+        XCTAssertTrue(isKeepTag("Sift · Keep OG", prefix: "Sift"))
+    }
+
+    // MARK: - Persistent-tag predicate
+
+    func testIsOptimizedTag() {
+        XCTAssertTrue(isOptimizedTag("Sift · Optimized", prefix: "Sift"))
+        XCTAssertTrue(isOptimizedTag("Sift · Optimized\n2", prefix: "Sift"))
+        XCTAssertFalse(isOptimizedTag("Optimized", prefix: "Sift"))
+        XCTAssertFalse(isOptimizedTag("Sift · Optimize", prefix: "Sift"))
+    }
+
+    func testPersistentSiftTagMatrix() {
+        for yes in [
+            "Sift · Keep", "Sift · Keep 30d\n6", "Sift · Keep until 2026-09-02",
+            "Sift · Keep OG", "Sift · Optimized\n2",
+        ] {
+            XCTAssertTrue(isPersistentSiftTag(yes, prefix: "Sift"), yes)
+        }
+        for no in ["Sift · 3d → Delete\n7", "Sift · Delete", "Work", "Sift · Keepsakes"] {
+            XCTAssertFalse(isPersistentSiftTag(no, prefix: "Sift"), no)
+        }
+    }
+
     func testPinIsActiveOnNamedDayAndLapsesNextDay() {
         let tag = parseKeepTag(["Sift · Keep until 2026-09-02"], prefix: "Sift", calendar: cal)
         guard case .until(let expiry)? = tag else { return XCTFail("expected .until") }

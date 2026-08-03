@@ -306,6 +306,64 @@ final class ScannerTests: XCTestCase {
             ))
     }
 
+    func testKeepOGTaggedFileAgesNormally() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try pin(path, "Sift · Keep OG")
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        // Keep OG is not a pin: the file moves, and the tag survives the move.
+        let moved = home.appendingPathComponent("Desktop/Desktop to Review/Images/old.png").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: moved))
+        XCTAssertTrue(rawTags(of: moved).contains { $0.hasPrefix("Sift · Keep OG") })
+    }
+
+    func testOptimizedMarkerSurvivesPinRetirement() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        try setSiftTag(
+            path, text: "Sift · Keep until \(isoDay(offsetDays: -2))", color: 6,
+            prefix: "Sift", preserving: { isPersistentSiftTag($0, prefix: "Sift") })
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        // Pin retired (tag gone, clock restamped) but the marker survives.
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path))
+        let tags = rawTags(of: path)
+        XCTAssertFalse(tags.contains { $0.hasPrefix("Sift · Keep") })
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Optimized") })
+    }
+
+    func testOptimizedMarkerSurvivesPinNormalization() throws {
+        let path = try makeFile("Desktop/old.png", addedDaysAgo: 10)
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        try setSiftTag(
+            path, text: "Sift · Keep 30d", color: 6, prefix: "Sift",
+            preserving: { isPersistentSiftTag($0, prefix: "Sift") })
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Keep until") })
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Optimized") })
+    }
+
+    func testPinnedFileWithMarkerIsSteadyState() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 1)
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        try setSiftTag(
+            path, text: "Sift · Keep", color: 6, prefix: "Sift",
+            preserving: { isPersistentSiftTag($0, prefix: "Sift") })
+        var logs: [String] = []
+        Scanner(config: config(), now: Date(), dryRun: false, log: { logs.append($0) }).run()
+        // The marker must not be mistaken for a stale countdown: no writes.
+        XCTAssertFalse(logs.contains { $0.hasPrefix("UNTAG") })
+        XCTAssertTrue(rawTags(of: path).contains { $0.hasPrefix("Sift · Optimized") })
+    }
+
+    func testCountdownRewriteKeepsOptimizedMarker() throws {
+        let path = try makeFile("Desktop/Desktop to Review/Images/old.png", addedDaysAgo: 1)
+        try addSiftTag(path, text: "Sift · Optimized", color: 2)
+        Scanner(config: config(), now: Date(), dryRun: false, log: { _ in }).run()
+        let tags = rawTags(of: path)
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · 6d → Delete") })
+        XCTAssertTrue(tags.contains { $0.hasPrefix("Sift · Optimized") })
+    }
+
     func testDryRunLeavesPinTagsAndClockUntouched() throws {
         let relative = try makeFile("Desktop/a.png", addedDaysAgo: 10)
         try pin(relative, "Sift · Keep 30d")

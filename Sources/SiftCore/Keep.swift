@@ -13,6 +13,8 @@ public enum KeepTag: Equatable {
 
 private let keepToken = "Keep"
 private let untilToken = "until"
+private let keepOGBody = "OG"
+private let optimizedToken = "Optimized"
 
 private let isoFormatter: DateFormatter = {
     let formatter = DateFormatter()
@@ -33,10 +35,39 @@ public func isKeepTag(_ entry: String, prefix: String) -> Bool {
 public func parseKeepTag(_ entries: [String], prefix: String, calendar: Calendar) -> KeepTag? {
     for entry in entries {
         if let body = keepBody(entry, prefix: prefix) {
+            // "Keep OG" protects the file's *bytes* from the optimize pass; it
+            // is not an aging pin. Without this carve-out it parses as a
+            // malformed pin, which would pin the item forever and rewrite the
+            // tag to "Keep" — erasing the marker it was asked to honour.
+            if body == keepOGBody { continue }
             return parseKeepBody(body, calendar: calendar)
         }
     }
     return nil
+}
+
+/// True when a tag entry means "keep the original file contents" — either the
+/// bare configured skip tag, or the namespaced `<prefix> · Keep OG` form.
+public func isKeepOGTag(_ entry: String, prefix: String, skipTag: String) -> Bool {
+    let name = tagName(entry)
+    return name == skipTag || name == "\(prefix) · \(keepToken) \(keepOGBody)"
+}
+
+/// True for the `<prefix> · Optimized` idempotency marker.
+public func isOptimizedTag(_ entry: String, prefix: String) -> Bool {
+    tagName(entry) == "\(prefix) · \(optimizedToken)"
+}
+
+/// Sift's persistent tags — every Keep form plus the Optimized marker. This is
+/// the predicate `setSiftTag(preserving:)` callers use, so that rewriting a
+/// transient tag (countdown, terminal) never strips durable state.
+public func isPersistentSiftTag(_ entry: String, prefix: String) -> Bool {
+    isKeepTag(entry, prefix: prefix) || isOptimizedTag(entry, prefix: prefix)
+}
+
+/// The name portion of a tag entry, without the "\n<colorIndex>" suffix.
+private func tagName(_ entry: String) -> String {
+    entry.components(separatedBy: "\n").first ?? entry
 }
 
 /// The instant a pin lapses, or nil when it never does. Relative durations round
@@ -67,7 +98,7 @@ public func keepTagText(prefix: String) -> String {
 /// token to equal `Keep` exactly, so a user's own `Sift · Keepsakes` tag is left
 /// entirely alone.
 private func keepBody(_ entry: String, prefix: String) -> String? {
-    let name = entry.components(separatedBy: "\n").first ?? entry
+    let name = tagName(entry)
     let ownPrefix = prefix + " · "
     guard name.hasPrefix(ownPrefix) else { return nil }
     var fields = name.dropFirst(ownPrefix.count).split(separator: " ").map(String.init)

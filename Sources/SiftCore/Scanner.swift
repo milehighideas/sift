@@ -138,9 +138,19 @@ public struct Scanner {
         }
     }
 
+    /// Sift's durable tags — pins and the Optimized marker — must survive every
+    /// rewrite of a transient tag. One predicate for every `setSiftTag` call
+    /// site; per-site ad-hoc closures are how the pin tag got eaten before.
     private var keepPredicate: (String) -> Bool {
         let prefix = config.settings.tagging.prefix
-        return { isKeepTag($0, prefix: prefix) }
+        return { isPersistentSiftTag($0, prefix: prefix) }
+    }
+
+    /// Used where the pin itself is being rewritten or cleared: drop Keep tags,
+    /// but never the Optimized marker.
+    private var markerPredicate: (String) -> Bool {
+        let prefix = config.settings.tagging.prefix
+        return { isOptimizedTag($0, prefix: prefix) }
     }
 
     /// Resolves an item's keep tag and returns whether it stays put this pass.
@@ -180,7 +190,7 @@ public struct Scanner {
         do {
             try setSiftTag(
                 item.path, text: nil, color: 0, prefix: config.settings.tagging.prefix,
-                preserving: { _ in false })
+                preserving: markerPredicate)
         } catch {
             log("ERROR expire \(item.path): \(error)")
             return false
@@ -200,7 +210,7 @@ public struct Scanner {
         do {
             try setSiftTag(
                 item.path, text: text, color: 6, prefix: config.settings.tagging.prefix,
-                preserving: { _ in false })
+                preserving: markerPredicate)
             log("KEEP \(item.path): \(text)")
         } catch {
             log("ERROR normalize \(item.path): \(error)")
@@ -213,7 +223,7 @@ public struct Scanner {
         let prefix = config.settings.tagging.prefix
         let stale = tags.contains { entry in
             let name = entry.components(separatedBy: "\n").first ?? entry
-            return name.hasPrefix(prefix + " · ") && !isKeepTag(entry, prefix: prefix)
+            return name.hasPrefix(prefix + " · ") && !isPersistentSiftTag(entry, prefix: prefix)
         }
         guard stale else { return }
         if dryRun {
