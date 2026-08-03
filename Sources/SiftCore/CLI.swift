@@ -89,6 +89,11 @@ private func cmdRun(_ args: ParsedArgs, statusOnly: Bool) -> Int32 {
     let dryRun = statusOnly || args.dryRun || config.settings.dryRun
     let logger = Logger(path: config.settings.log)
     let sink: (String) -> Void = statusOnly ? { print($0) } : { logger.log($0) }
+    // Optimize first: a new arrival is shrunk before it can ever be moved, and
+    // the pass restores Date Added so aging behaves identically either way.
+    if let optimize = config.settings.optimize, optimize.enabled {
+        OptimizePass(config: config, dryRun: dryRun, log: sink).run()
+    }
     Scanner(config: config, now: Date(), dryRun: dryRun, log: sink).run()
     return 0
 }
